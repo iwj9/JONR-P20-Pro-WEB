@@ -1072,13 +1072,8 @@ if __name__ == "__main__":
     if "--login" in sys.argv:
         raise SystemExit(0 if cloud_session.login_interactive() else 1)
     os.makedirs(STATIC_DIR, exist_ok=True)
-    if not cloud_session.session_exists() and sys.stdin.isatty():
-        print("\n[안내] 지도 표시를 위해 Mi 클라우드 로그인이 한 번 필요합니다.")
-        try:
-            answer = input("지금 로그인할까요? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            answer = "n"
-        if answer in ("", "y", "yes"):
-            cloud_session.login_interactive()
+    if not cloud_session.session_exists():
+        print("[안내] Mi 클라우드 세션이 없습니다. 지도 기능을 사용하려면 "
+              "`python app.py --setup`을 먼저 실행하세요. (로컬 제어는 가능)")
     print("JONR P20 Pro dashboard → http://127.0.0.1:5000")
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
