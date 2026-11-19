@@ -1084,10 +1084,11 @@ if __name__ == "__main__":
         print("[설정] config.json에 IP/토큰/DID/서버를 저장했습니다. 이제 `python app.py`만 실행하면 됩니다.")
         raise SystemExit(0)
     if "--login" in sys.argv:
-        raise SystemExit(0 if cloud_session.login_interactive() else 1)
+        ok = cloud_session.login_interactive(force=True)
+        if ok:
+            xc_cloud.invalidate()
+        raise SystemExit(0 if ok else 1)
     os.makedirs(STATIC_DIR, exist_ok=True)
-    if not cloud_session.session_exists():
-        print("[안내] Mi 클라우드 세션이 없습니다. 지도 기능을 사용하려면 "
-              "`python app.py --setup`을 먼저 실행하세요. (로컬 제어는 가능)")
+    cloud_session.ensure_session(preferred=_preferred_server())
     print("JONR P20 Pro dashboard → http://127.0.0.1:5000")
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)

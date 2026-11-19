@@ -125,28 +125,64 @@ def _apply_session(conn, sess):
             setattr(conn, key, sess[key])
 
 
-def _session_is_valid(conn):
-    for server in SERVERS:
+def _session_is_valid(conn, preferred=None):
+    servers = ([preferred] if preferred else []) + [s for s in SERVERS if s != preferred]
+    for server in servers:
         try:
-            if isinstance(conn.get_dev_cnt(server), dict):
+            resp = conn.get_dev_cnt(server)
+            if isinstance(resp, dict) and resp.get("code") == 0 and "result" in resp:
                 return True
         except Exception:
             continue
     return False
 
 
-def login_interactive():
+def validate_session(preferred=None):
+    """저장된 세션이 실제로 유효한지 확인한다."""
+    sess = load_session()
+    if not sess:
+        return False
+    xc = load_connector()
+    if xc is None:
+        return False
+    try:
+        conn = xc.PasswordXiaomiCloudConnector()
+        _apply_session(conn, sess)
+        return _session_is_valid(conn, preferred)
+    except Exception:
+        return False
+
+
+def ensure_session(preferred=None):
+    """앱 시작 시 세션을 확인하고, 만료됐으면 대화형 재로그인을 유도한다."""
+    if validate_session(preferred):
+        return True
+    if not sys.stdin.isatty():
+        print("[안내] Mi 클라우드 세션이 없거나 만료되었습니다. "
+              "`python app.py --login` (최초라면 --setup)으로 다시 로그인하세요. "
+              "로컬 제어는 계속 가능합니다.")
+        return False
+    print("[안내] Mi 클라우드 세션이 없거나 만료되어 로그인을 시작합니다.")
+    try:
+        return login_interactive(force=True)
+    except (EOFError, KeyboardInterrupt):
+        print("[안내] 로그인이 취소되었습니다. 로컬 제어는 계속 가능합니다.")
+        return False
+
+
+def login_interactive(force=False):
     """저장된 세션이 없거나 만료됐을 때 Mi 계정 로그인을 수행한다."""
     xc = load_connector()
     if xc is None:
         return False
     conn = xc.PasswordXiaomiCloudConnector()
-    sess = load_session()
-    if sess:
-        _apply_session(conn, sess)
-        if _session_is_valid(conn):
-            print("[클라우드] 저장된 세션을 재사용합니다.")
-            return True
+    if not force:
+        sess = load_session()
+        if sess:
+            _apply_session(conn, sess)
+            if _session_is_valid(conn):
+                print("[클라우드] 저장된 세션을 재사용합니다.")
+                return True
     if not conn.login():
         print("클라우드 로그인에 실패했습니다. Mi Home 계정을 확인한 뒤 다시 시도하세요.")
         return False
