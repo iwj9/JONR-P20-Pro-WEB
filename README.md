@@ -34,7 +34,7 @@ python --version
 ### 2-2. 프로젝트 받기
 
 ```powershell
-git clone https://github.com/<사용자>/JONR-P20-Pro-WEB.git
+git clone https://github.com/iwj9/JONR-P20-Pro-WEB.git
 cd JONR-P20-Pro-WEB
 ```
 
