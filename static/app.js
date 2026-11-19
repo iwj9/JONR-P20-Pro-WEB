@@ -39,13 +39,18 @@ const RSTATUS_KO = {
 const STATION_STATES = new Set(["WashMop", "HotDry", "WindDry", "ClctDust",
   "BackWashMop", "BackClctDust", "BPReturn", "BPPauseReturn", "BackWashPause", "BackClctPause"]);
 const CLEAN_STATES = [2, 4, 5, 7];
-/* 실제 청소 중뿐 아니라 세척 복귀·일시정지·스테이션 작업도 '진행 중인 작업'으로 본다 */
-const TASK_STATE_CODES = new Set([2, 4, 5, 6, 7, 10, 11, 12, 17, 18, 19, 20, 21, 23]);
+/* 세척 복귀·일시정지 등은 작업 중이지만, 열풍/송풍 건조는 청소가 끝난 뒤의 후처리다 */
+const ACTIVE_STATION_STATES = new Set(["WashMop", "ClctDust",
+  "BackWashMop", "BackClctDust", "BPReturn", "BPPauseReturn",
+  "BackWashPause", "BackClctPause"]);
+const POST_CLEAN_STATES = new Set(["HotDry", "WindDry"]);
+const TASK_STATE_CODES = new Set([2, 4, 5, 6, 7, 10, 11, 12, 17, 19, 20, 21, 23]);
 const TASK_CODE_RANGE = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
 
 function hasActiveTask(s) {
+  if (POST_CLEAN_STATES.has(s.robot_status)) return false;
   if (TASK_STATE_CODES.has(s.status_code)) return true;
-  if (s.status_code === 18 && STATION_STATES.has(s.robot_status)) return true;
+  if (s.status_code === 18 && ACTIVE_STATION_STATES.has(s.robot_status)) return true;
   const targets = s.task_targets;
   const hasTargets = Array.isArray(targets)
     ? targets.length > 0
