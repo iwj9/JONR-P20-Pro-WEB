@@ -1,6 +1,7 @@
 # 로컬 비밀/런타임 (절대 커밋 금지)
 config.json
 .xc_session.pkl
+.xc_session.json
 .channel_map.json
 .thres_winner
 

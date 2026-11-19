@@ -1,11 +1,10 @@
 """백엔드용 클라우드 세션 (비밀번호 저장 없음, 캐시된 세션 재사용).
 
-`cloud_session.py`가 저장한 `.xc_session.pkl`을 읽어 세션을 복원한다.
+`cloud_session.py`가 저장한 `.xc_session.json`을 읽어 세션을 복원한다.
 세션이 없거나 만료됐으면 지도 기능만 비활성화되고, 로컬 제어는 계속 동작한다.
 """
 import json
 import os
-import pickle
 import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -29,20 +28,15 @@ def get_cloud():
     global _CONN, _SRV
     if _CONN is not None:
         return _CONN, _SRV
-    if not os.path.exists(cs.SESS_PATH):
+    sess = cs.load_session()
+    if not sess:
         return None, None
     xc = _load_xc()
     if xc is None:
         return None, None
     conn = xc.PasswordXiaomiCloudConnector()
     try:
-        with open(cs.SESS_PATH, "rb") as f:
-            sess = pickle.load(f)
-        conn._serviceToken = sess["_serviceToken"]
-        conn._ssecurity = sess["_ssecurity"]
-        conn.userId = sess["userId"]
-        conn._device_id = sess.get("_device_id", conn._device_id)
-        conn._agent = sess.get("_agent", conn._agent)
+        cs._apply_session(conn, sess)
         for srv in cs.SERVERS:
             try:
                 if isinstance(conn.get_dev_cnt(srv), dict):

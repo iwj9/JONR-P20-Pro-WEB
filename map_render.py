@@ -160,6 +160,44 @@ def decode_map_file(raw: bytes):
             "charge": cp, "pos": pos, "trace": trace}
 
 
+def decode_live(raw):
+    """실시간 위치·경로만 읽는다. 래스터/벽은 디코딩하지 않는다."""
+    try:
+        obj = json.loads(raw.decode("utf-8", "replace"))
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    fields = obj.get("fields") or []
+    meta = None
+    if fields and isinstance(fields[0], str):
+        text = b64_text(fields[0])
+        if text:
+            try:
+                meta = json.loads(text)
+            except Exception:
+                meta = None
+    cp = meta.get("chargePos") if isinstance(meta, dict) else {}
+    if isinstance(cp, str):
+        try:
+            cp = json.loads(cp)
+        except Exception:
+            cp = {}
+    if not isinstance(cp, dict):
+        cp = {}
+    pos = None
+    if len(fields) > 2 and isinstance(fields[2], str) and fields[2].strip():
+        try:
+            p = json.loads(fields[2])
+            if isinstance(p, dict) and p.get("x") is not None:
+                pos = {"x": float(p["x"]), "y": float(p["y"]),
+                       "a": float(p.get("a") or 0)}
+        except Exception:
+            pos = None
+    trace = decode_trace(fields[1] if len(fields) > 1 else None)
+    return {"map_id": obj.get("mapId"), "charge": cp, "pos": pos, "trace": trace}
+
+
 def decode_trace(field):
     """f1 {trace: b64(lz4), lz4Len} → [{'m': workMode, 'p': [[x,y],...]}, ...]."""
     obj = None
@@ -313,23 +351,23 @@ def render_png(data, scale=None):
     pad = max(40, int(max(w, h) * k * 0.25))
     ox, oy = pad, pad
     d = dict(data, scale=k, ox=ox, oy=oy)
-    img = Image.new("RGBA", (w * k + pad * 2, h * k + pad * 2), C_UNKNOWN)
-    px = img.load()
     rast = data["raster"]
-    for r in range(h):
-        for c in range(w):
-            v = rast[(h - 1 - r) * w + c]
+    colors = []
+    for row in range(h - 1, -1, -1):
+        for v in rast[row * w:(row + 1) * w]:
             if v == 1:
-                col = C_WALL
+                colors.append(C_WALL)
             elif v == 2:
-                col = C_FLOOR
+                colors.append(C_FLOOR)
             elif v >= 3:
-                col = C_ROOMS[(v - 3) % len(C_ROOMS)]
+                colors.append(C_ROOMS[(v - 3) % len(C_ROOMS)])
             else:
-                continue
-            for dy in range(k):
-                for dx in range(k):
-                    px[c * k + dx + ox, r * k + dy + oy] = col
+                colors.append(C_UNKNOWN)
+    base = Image.new("RGBA", (w, h))
+    base.putdata(colors)
+    scaled = base.resize((w * k, h * k), Image.NEAREST)
+    img = Image.new("RGBA", (w * k + pad * 2, h * k + pad * 2), C_UNKNOWN)
+    img.paste(scaled, (ox, oy))
     return img, {"scale": k, "width": w, "height": h,
                  "x_min": d["x_min"], "y_max": d["y_max"],
                  "resolution": d.get("resolution", 5),

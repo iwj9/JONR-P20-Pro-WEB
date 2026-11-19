@@ -65,7 +65,7 @@ pip install -r requirements.txt
 로봇 제어에는 **IP**, **32자리 토큰**, **DID**가 필요합니다. Mi Home 계정으로 한 번 추출합니다.
 
 ```powershell
-curl.exe -sL "https://raw.githubusercontent.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor/master/token_extractor.py" -o "$env:TEMP\token_extractor.py"
+curl.exe -sL "https://raw.githubusercontent.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor/d8bb6a9e6aeff2d38ecc9e4caefcc58f8551e672/token_extractor.py" -o "$env:TEMP\token_extractor.py"
 python "$env:TEMP\token_extractor.py"
 ```
 
@@ -73,7 +73,7 @@ python "$env:TEMP\token_extractor.py"
 - 조회할 서버를 묻으면 비워 두면 전체 서버를 확인합니다. 한국 계정은 보통 `sg` 또는 `de` 계열에서 발견됩니다.
 - 출력에서 `xtl.vacuum.xm2216` 행의 **IP / TOKEN / DID / MAC**을 확인합니다.
 
-> `token_extractor.py`는 이 프로젝트가 아닌 외부 도구입니다. 토큰과 계정 비밀번호는 절대 채팅, 이슈, 저장소에 올리지 마세요.
+> `token_extractor.py`는 이 프로젝트가 아닌 외부 도구입니다. 토큰과 계정 비밀번호는 절대 채팅, 이슈, 저장소에 올리지 마세요. 앱은 로그인 시 이 파일을 고정된 커밋과 SHA256으로 검증한 뒤 사용합니다.
 
 ---
 
@@ -83,7 +83,7 @@ python "$env:TEMP\token_extractor.py"
 python app.py
 ```
 
-첫 실행 시 지도 표시를 위해 **Mi 클라우드 로그인**을 한 번 요청합니다. 터미널 안내에 따라 Mi 계정으로 로그인하면 세션이 `.xc_session.pkl`에 로컬 저장됩니다.
+첫 실행 시 지도 표시를 위해 **Mi 클라우드 로그인**을 한 번 요청합니다. 터미널 안내에 따라 Mi 계정으로 로그인하면 세션이 `.xc_session.json`에 로컬 저장됩니다.
 
 - 자동 로그인 안내가 뜨지 않거나 세션이 만료됐다면:
 
@@ -110,7 +110,7 @@ http://127.0.0.1:5000
    - DID
 3. **저장**을 누릅니다.
 
-저장 후 상태가 자동으로 갱신됩니다. 토큰은 비밀번호 입력란으로 표시되며, **보기** 버튼을 눌렀을 때만 화면에 나타납니다.
+저장 후 상태가 자동으로 갱신됩니다. 저장된 토큰은 보안상 화면으로 다시 내려보내지 않습니다. 토큰 입력란은 비어 있으며, **변경하지 않고 저장하면 기존 토큰이 유지**됩니다. 새 토큰을 사용할 때만 32자리 값을 입력하세요.
 
 `config.json`은 앱이 자동으로 생성하며, 토큰이 평문으로 저장됩니다. 이 파일은 `.gitignore`에 포함되어 있으므로 저장소에 올라가지 않습니다.
 
@@ -164,8 +164,8 @@ http://127.0.0.1:5000
 ## 9. 경고
 
 - **비공식 프로젝트입니다.** JONR, Xiaomi, Mi Home과 제휴하거나 보증받은 프로젝트가 아닙니다.
-- **토큰은 로봇을 완전히 제어할 수 있는 자격 증명입니다.** `config.json`, `.xc_session.pkl`, 화면 캡처, 터미널 로그를 공유하지 마세요.
-- 서버는 인증 기능이 없으며 `127.0.0.1`에만 바인딩됩니다. 포트를 외부에 노출하거나 리버스 프록시 뒤에 두지 마세요.
+- **토큰은 로봇을 완전히 제어할 수 있는 자격 증명입니다.** `config.json`, `.xc_session.json`, 화면 캡처, 터미널 로그를 공유하지 마세요.
+- 서버는 `127.0.0.1`에만 바인딩되며, Host·Origin·요청 헤더를 검사해 다른 사이트에서의 호출을 차단합니다. 포트를 외부에 노출하거나 리버스 프록시 뒤에 두지 마세요.
 - 지도·청소 경로·카펫·문턱 저장은 **실제 기기 설정을 변경**합니다.
 - 클라우드 지도 기능은 Mi 클라우드 정책, 네트워크 상태, 계정 세션에 의존합니다. 세션이 만료되면 `python app.py --login`을 다시 실행해야 합니다.
 - 로봇 모델과 펌웨어 버전에 따라 일부 기능이 동작하지 않거나 다르게 표시될 수 있습니다.

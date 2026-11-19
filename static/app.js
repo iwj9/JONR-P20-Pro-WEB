@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
-const api = async (p, o) => {
+const api = async (p, o = {}) => {
+  o.headers = { ...(o.headers || {}), "X-Requested-With": "XMLHttpRequest" };
   const r = await fetch(p, o);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
@@ -253,7 +254,12 @@ async function loadCfg() {
     const c = await api("/api/config");
     if (c.ip) $("cfgIp").value = c.ip;
     if (c.did) $("cfgDid").value = c.did;
-    if (typeof c.token === "string") $("cfgToken").value = c.token;
+    // 전체 토큰은 서버에서 보내지 않는다. 변경할 때만 새로 입력한다.
+    const tokenEl = $("cfgToken");
+    tokenEl.value = "";
+    tokenEl.placeholder = c.has_token
+      ? "저장됨 — 변경 시 새 토큰 입력"
+      : "32자리 hex";
     $("cfgForceCloud").checked = !!c.force_cloud;
   } catch (e) { /* ignore */ }
 }
@@ -279,6 +285,7 @@ $("cfgSave").onclick = async (e) => {
       ip: $("cfgIp").value, token: $("cfgToken").value,
       did: $("cfgDid").value, force_cloud: $("cfgForceCloud").checked });
     $("cfgMsg").textContent = "연결 OK · " + (r.info?.model || "");
+    $("cfgToken").value = "";
     hideToken();
     loadCfg(); refresh();
   } catch (err) { $("cfgMsg").textContent = "실패: " + err.message; }

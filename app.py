@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from flask import Flask, jsonify, request, send_from_directory, Response
+import threading
+import time
+from flask import Flask, jsonify, request, send_from_directory, Response, abort
 
 from jonr import JonrDevice
 import cloud_session
@@ -19,6 +21,26 @@ STATIC_DIR = os.path.join(BASE, "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
+ALLOWED_HOSTS = {"127.0.0.1:5000", "localhost:5000", "127.0.0.1", "localhost"}
+ALLOWED_ORIGINS = {"http://127.0.0.1:5000", "http://localhost:5000"}
+
+
+@app.before_request
+def _local_request_only():
+    """로컬 브라우저에서만 요청을 허용한다. (CSRF/DNS rebinding 완화)"""
+    if request.host not in ALLOWED_HOSTS:
+        abort(403)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("Origin")
+        if origin and origin not in ALLOWED_ORIGINS:
+            abort(403)
+        if request.headers.get("Sec-Fetch-Site") == "cross-site":
+            abort(403)
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            abort(403)
+        if request.mimetype != "application/json":
+            abort(415)
+
 
 @app.after_request
 def _no_cache(resp):
@@ -28,21 +50,37 @@ def _no_cache(resp):
 
 _MAP_CACHE = {"png": None, "meta": None, "walls": None, "map_id": None,
               "obj": None, "raw": None}
+_LOCK = threading.RLock()
+_CONFIG_CACHE = {"mtime": None, "data": {}}
+_DEVICE_CACHE = {"key": None, "dev": None}
 
 
 def load_config():
-    if os.path.exists(CONFIG_PATH):
+    try:
+        mtime = os.stat(CONFIG_PATH).st_mtime_ns
+    except OSError:
+        return {}
+    with _LOCK:
+        if _CONFIG_CACHE["mtime"] == mtime:
+            return dict(_CONFIG_CACHE["data"])
         try:
             with open(CONFIG_PATH, encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except Exception:
-            return {}
-    return {}
+            data = {}
+        _CONFIG_CACHE.update(mtime=mtime, data=data)
+        return dict(data)
 
 
 def save_config(cfg):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    with _LOCK:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        try:
+            _CONFIG_CACHE.update(mtime=os.stat(CONFIG_PATH).st_mtime_ns,
+                                 data=dict(cfg))
+        except OSError:
+            _CONFIG_CACHE["mtime"] = None
 
 
 def get_device() -> JonrDevice:
@@ -50,7 +88,13 @@ def get_device() -> JonrDevice:
     ip, token = cfg.get("ip", ""), cfg.get("token", "")
     if not ip or not token:
         raise RuntimeError("IP/token 미설정 — 우측 상단 설정에서 입력하세요")
-    return JonrDevice(ip, token, cfg.get("did", ""))
+    did = cfg.get("did", "")
+    key = (ip, token, did)
+    with _LOCK:
+        if _DEVICE_CACHE["key"] != key or _DEVICE_CACHE["dev"] is None:
+            _DEVICE_CACHE["dev"] = JonrDevice(ip, token, did)
+            _DEVICE_CACHE["key"] = key
+        return _DEVICE_CACHE["dev"]
 
 
 @app.route("/")
@@ -71,22 +115,21 @@ def config():
         resp = jsonify({
             "ip": cfg.get("ip", ""),
             "did": cfg.get("did", ""),
-            "token": tok,
             "has_token": len(tok) == 32,
             "token_masked": (tok[:4] + "…" + tok[-4:] if len(tok) == 32 else ""),
             "force_cloud": bool(cfg.get("force_cloud")),
         })
         resp.headers["Cache-Control"] = "no-store"
         return resp
-    data = request.get_json(force=True, silent=True) or {}
-    if "force_cloud" in data and not data.get("ip"):
-        cfg = load_config()
-        cfg["force_cloud"] = bool(data.get("force_cloud"))
-        save_config(cfg)
-        return jsonify({"ok": True, "force_cloud": cfg["force_cloud"]})
-    ip = str(data.get("ip", "")).strip()
-    token = str(data.get("token", "")).strip()
-    did = str(data.get("did", "")).strip()
+    data = request.get_json(silent=True) or {}
+    saved = load_config()
+    if "force_cloud" in data and not any(data.get(k) for k in ("ip", "token", "did")):
+        saved["force_cloud"] = bool(data.get("force_cloud"))
+        save_config(saved)
+        return jsonify({"ok": True, "force_cloud": saved["force_cloud"]})
+    ip = str(data.get("ip", "")).strip() or str(saved.get("ip", "")).strip()
+    token = str(data.get("token", "")).strip() or str(saved.get("token", "")).strip()
+    did = str(data.get("did", "")).strip() or str(saved.get("did", "")).strip()
     if not ip or not token:
         return jsonify({"ok": False, "error": "ip/token 필요"}), 400
     try:
@@ -94,11 +137,8 @@ def config():
         info = dev.info()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
-    cfg = {"ip": ip, "token": token, "did": did}
-    if "force_cloud" in data:
-        cfg["force_cloud"] = bool(data.get("force_cloud"))
-    else:
-        cfg["force_cloud"] = bool(load_config().get("force_cloud"))
+    cfg = {"ip": ip, "token": token, "did": did,
+           "force_cloud": bool(data.get("force_cloud", saved.get("force_cloud")))}
     save_config(cfg)
     return jsonify({"ok": True, "info": info})
 
@@ -119,13 +159,11 @@ def status():
 
 def _cloud_start(name, data):
     """시작 계열(start/room/zone/spot)을 클라우드로: stop-clean 후 start-clean."""
-    import time
-    json_mod = __import__("json")
     if name == "start":
         params = [1, "[]"]
     elif name == "room":
         ids = [int(x) for x in (data.get("room_ids") or [])]
-        params = [3, json_mod.dumps(ids, separators=(",", ":"))]
+        params = [3, json.dumps(ids, separators=(",", ":"))]
     elif name == "zone":
         rects = data.get("rects")
         if not rects and data.get("rect"):
@@ -136,7 +174,7 @@ def _cloud_start(name, data):
             xa, xb = sorted((x1, x2))
             ya, yb = sorted((y1, y2))
             ring += [xa, ya, xb, ya, xb, yb, xa, yb]
-        params = [4, json_mod.dumps(ring, separators=(",", ":"))]
+        params = [4, json.dumps(ring, separators=(",", ":"))]
     elif name == "spot":
         params = [6, ""]
     else:
@@ -151,7 +189,7 @@ def _cloud_start(name, data):
 
 @app.route("/api/action", methods=["POST"])
 def action():
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(silent=True) or {}
     name = str(data.get("name", "")).lower()
     if name not in ACTION_CODES and name not in ("spot", "room", "zone"):
         return jsonify({"ok": False, "error": f"unknown action: {name}"}), 400
@@ -281,7 +319,7 @@ def _cloud_action(siid, aiid, params):
 
 @app.route("/api/set", methods=["POST"])
 def setting():
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(silent=True) or {}
     key = str(data.get("key", "")).lower()
     val = data.get("value")
     if key == "disturb_time":
@@ -356,7 +394,6 @@ def map_info():
 
 
 def _current_map_obj():
-    import time
     dev = get_device()
     last = None
     for _ in range(3):
@@ -376,7 +413,6 @@ def _current_map_obj():
 
 def _maps_infos():
     """복층 저장 지도 목록. [{mapId, name, status}]"""
-    import time
     dev = get_device()
     last = None
     infos_obj = None
@@ -398,7 +434,7 @@ def _maps_infos():
     if not infos_obj:
         raise RuntimeError(f"지도 목록을 못 받음({last}). 로봇 전원/WiFi 확인.")
     raw, _srv = xc_cloud.cloud_download(infos_obj)
-    obj = __import__("json").loads(raw.decode("utf-8", "replace"))
+    obj = json.loads(raw.decode("utf-8", "replace"))
     if not isinstance(obj, list):
         raise RuntimeError("지도 목록 형식 오류")
     return [{"mapId": e.get("mapId"), "name": e.get("name"),
@@ -406,28 +442,30 @@ def _maps_infos():
 
 
 def _invalidate_map_cache():
-    _MAP_CACHE.update({"png": None, "meta": None, "walls": None,
-                       "map_id": None, "obj": None, "raw": None,
-                       "data": None})
+    with _LOCK:
+        _MAP_CACHE.update({"png": None, "meta": None, "walls": None,
+                           "map_id": None, "obj": None, "raw": None,
+                           "data": None})
 
 
 def _load_map(refresh=False):
-    if _MAP_CACHE["png"] is not None and not refresh:
+    with _LOCK:
+        if _MAP_CACHE["png"] is not None and not refresh:
+            return _MAP_CACHE
+        cfg = load_config()
+        obj = _current_map_obj()
+        raw, srv = xc_cloud.cloud_download(obj)
+        data = map_render.decode_map_file(raw)
+        if data is None:
+            raise RuntimeError("지도 파싱 실패")
+        img, meta = map_render.render_png(data)
+        import io
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        _MAP_CACHE.update({"png": buf.getvalue(), "meta": meta,
+                           "walls": data["walls"], "map_id": data["map_id"],
+                           "obj": obj, "raw": raw, "data": data, "srv": srv})
         return _MAP_CACHE
-    cfg = load_config()
-    obj = _current_map_obj()
-    raw, srv = xc_cloud.cloud_download(obj)
-    data = map_render.decode_map_file(raw)
-    if data is None:
-        raise RuntimeError("지도 파싱 실패")
-    img, meta = map_render.render_png(data)
-    import io
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    _MAP_CACHE.update({"png": buf.getvalue(), "meta": meta,
-                       "walls": data["walls"], "map_id": data["map_id"],
-                       "obj": obj, "raw": raw, "data": data, "srv": srv})
-    return _MAP_CACHE
 
 
 @app.route("/api/map/image")
@@ -479,16 +517,16 @@ def map_live():
         if not obj:
             return jsonify({"ok": False, "error": "지도 파일명 없음"}), 502
         raw, _srv = xc_cloud.cloud_download(obj)
-        data = map_render.decode_map_file(raw)
-        if data is None:
+        live = map_render.decode_live(raw)
+        if live is None:
             return jsonify({"ok": False, "error": "지도 파싱 실패"}), 502
-        pos = map_render.pos_to_px(data.get("pos"), meta)
+        pos = map_render.pos_to_px(live.get("pos"), meta)
         if pos is None or (abs(pos["x"]) < 1 and abs(pos["y"]) < 1):
             # 도킹 중에는 (0,0)을 올리기도 한다 → 도크 위치로 대체
-            dock = map_render.pos_to_px(data.get("charge") or {}, meta)
+            dock = map_render.pos_to_px(live.get("charge") or {}, meta)
             if dock:
                 pos = {"x": dock["x"], "y": dock["y"], "a": 0, "docked": True}
-        trace = map_render.trace_to_px(data.get("trace"), meta)
+        trace = map_render.trace_to_px(live.get("trace"), meta)
         return jsonify({"ok": True, "pos": pos, "trace": trace})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
@@ -509,68 +547,12 @@ def map_data():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
-def _write_walls(cur_b64, map_id, expect_add=None, expect_del=None, rounds=4):
-    import time
-    cfg = load_config()
-    did = (cfg.get("did") or "").strip()
-    if not did:
-        for v in [_current_map_obj()]:
-            parts = v.split("/")
-            if len(parts) >= 2:
-                did = parts[1]
-    payload = __import__("json").dumps(
-        {"mapId": map_id, "virtualWalls": cur_b64[0], "mopWalls": cur_b64[1],
-         "carpet": cur_b64[2], "thres": cur_b64[3]}, separators=(",", ":"))
-    prefer = _MAP_CACHE.get("srv")
-    resp, _srv = xc_cloud.action_on_device_server(did, 17, 5, [payload],
-                                                 prefer=prefer)
-    result = (resp.get("result") or {}) if isinstance(resp, dict) else {}
-    dev_code = result.get("code") if isinstance(result, dict) else None
-    if isinstance(result, dict) and dev_code not in (None, 0):
-        raise RuntimeError(f"기기 거부: {result}")
-
-    def norm(entries):
-        return sorted([(e.get("type"),
-                        tuple(tuple(p) for p in e.get("points", [])))
-                       for e in entries])
-
-    detail = {"cloud_code": resp.get("code") if isinstance(resp, dict) else None,
-              "device_code": dev_code, "tries": []}
-    m2 = None
-    for attempt in range(rounds):
-        time.sleep(15 if attempt == 0 else 20)
-        try:
-            _load_map(refresh=True)
-            m2 = _load_map()
-        except Exception as e:
-            detail["tries"].append(f"재다운로드 실패: {str(e)[:80]}")
-            continue
-        cur_th = m2["walls"].get("thres", [])
-        if expect_add is not None:
-            hit = expect_add in norm(cur_th)
-        elif expect_del is not None:
-            hit = all(e.get("id") != expect_del for e in cur_th)
-        else:
-            hit = True
-        detail["tries"].append(f"{attempt + 1}차: thres={len(cur_th)}개, "
-                               f"{'확인' if hit else '미반영'}")
-        if hit:
-            break
-    thres = (m2["walls"].get("thres", []) if m2 else [])
-    if expect_add is not None:
-        same = bool(m2) and expect_add in norm(thres)
-    elif expect_del is not None:
-        same = bool(m2) and all(e.get("id") != expect_del for e in thres)
-    else:
-        same = True
-    detail["verify"] = "SAME" if same else "DIFF"
-    return resp, same, thres, detail
 
 
 @app.route("/api/clean/room", methods=["POST"])
 def clean_room():
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         ids = [int(x) for x in (body.get("room_ids") or [])]
         if not ids:
             return jsonify({"ok": False, "error": "방을 선택하세요"}), 400
@@ -592,7 +574,7 @@ def clean_room():
 @app.route("/api/clean/zone", methods=["POST"])
 def clean_zone():
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         rects = body.get("rects")
         if not rects and body.get("rect"):
             rects = [body["rect"]]
@@ -636,7 +618,7 @@ def consumables_get():
 @app.route("/api/consumables/reset", methods=["POST"])
 def consumables_reset():
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         ctype = str(body.get("type", ""))
         if not ctype:
             return jsonify({"ok": False, "error": "type 필요"}), 400
@@ -656,9 +638,8 @@ def maps_list():
 
 @app.route("/api/maps/switch", methods=["POST"])
 def maps_switch():
-    import time
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         mid = int(body["mapId"])
         dev = get_device()
         try:
@@ -711,7 +692,7 @@ def _shape_points(kind, pts, wtype=2):
 def carpet_prefer_save():
     """카펫 한 영역의 개별 전략 (17.57 carpet-preference)."""
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         cid = int(body.get("id"))
         custom = bool(body.get("custom"))
         prefer = int(body.get("prefer") or 0)
@@ -751,7 +732,7 @@ def carpet_prefer_save():
 def carpet_prefer_batch():
     """저장 버튼에서 모아둔 카펫별 전략을 한 번에 적용."""
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         items = body.get("items") or []
         if not isinstance(items, list) or not items:
             return jsonify({"ok": False, "error": "items 필요"}), 400
@@ -799,7 +780,7 @@ def carpet_prefer_batch():
 def walls_save():
     """벽/구역/문턱/카펫 일괄 저장. kind별로 액션·mode가 다르다."""
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         kind = str(body.get("kind", ""))
         if kind not in WALL_KINDS:
             return jsonify({"ok": False, "error": f"unknown kind: {kind}"}), 400
@@ -849,7 +830,6 @@ def walls_save():
             return jsonify({"ok": True, "kind": kind, "noop": True,
                             "walls": m["data"]["walls"].get(kind, [])})
         key = "carpetlist" if action == 54 else "virtuaList"
-        import time
         total = (len(items) + 4) // 5
         last = None
         for i in range(0, len(items), 5):
@@ -877,7 +857,7 @@ def walls_save():
 def threshold_save():
     """문턱 일괄 저장: 추가/수정(mod)/삭제(del)를 한 번에."""
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         adds = body.get("adds") or []
         updates = body.get("updates") or []
         deletes = body.get("deletes") or []
@@ -913,7 +893,6 @@ def threshold_save():
                           "mode": 2, "action": "del", "isActive": True,
                           "point": f"{int(x1)},{int(y1)},{int(x2)},{int(y2)}"})
         resp = _send_carpet_marking(items, mid)
-        import time
         time.sleep(6)
         m2 = _load_map(refresh=True)
         thres = m2["walls"].get("thres", [])
@@ -938,23 +917,10 @@ def threshold_list():
         return jsonify({"ok": False, "error": str(e)}), 502
 
 
-WINNER_PATH = os.path.join(BASE, ".thres_winner")
 
 
-def _winner_get():
-    try:
-        with open(WINNER_PATH, encoding="utf-8") as f:
-            return f.read().strip() or None
-    except Exception:
-        return None
 
 
-def _winner_set(name):
-    try:
-        with open(WINNER_PATH, "w", encoding="utf-8") as f:
-            f.write(name)
-    except Exception:
-        pass
 
 
 def _wall_chunks(items):
@@ -966,35 +932,10 @@ def _wall_chunks(items):
     return out
 
 
-def _send_wall_changes(items, map_id, wait=7):
-    """set-virtual-walls(17.5)에 앱과 동일한 변경분 페이로드 전송."""
-    import time
-    cfg = load_config()
-    did = (cfg.get("did") or "").strip()
-    if not did:
-        for v in [_current_map_obj()]:
-            parts = v.split("/")
-            if len(parts) >= 2:
-                did = parts[1]
-    last = None
-    for idx, total, chunk in _wall_chunks(items):
-        payload = json.dumps({"index": idx, "total": total,
-                              "virtuaList": chunk}, separators=(",", ":"))
-        resp, _srv = xc_cloud.action_on_device_server(
-            did, 17, 5, [payload], prefer=_MAP_CACHE.get("srv"))
-        last = resp
-        res = (resp.get("result") or {}) if isinstance(resp, dict) else {}
-        if isinstance(res, dict) and res.get("code") not in (None, 0):
-            raise RuntimeError(f"기기 거부: {res}")
-        if total > 1:
-            time.sleep(0.6)
-    time.sleep(wait)
-    return last
 
 
 def _send_carpet_marking(items, map_id, wait=7):
     """문턱 저장: carpet-marking(17.54) / {index,total,carpetlist:[...]} (앱과 동일)."""
-    import time
     cfg = load_config()
     did = (cfg.get("did") or "").strip()
     if not did:
@@ -1020,7 +961,6 @@ def _send_carpet_marking(items, map_id, wait=7):
 
 def _verify_thres(expect_point, expect_present=True, rounds=4):
     """재다운로드로 문턱 반영 확인. expect_point=(x1,y1,x2,y2)."""
-    import time
     detail = []
     m2 = None
     for attempt in range(rounds):
@@ -1044,29 +984,15 @@ def _verify_thres(expect_point, expect_present=True, rounds=4):
     return hit, thres, detail
 
 
-def _thres_wire_unused():  # 구형 경로 흔적 정리용 (참조 없음)
-    return None
 
 
 
-def _payload4(all_b64_raw, thres_raw, form):
-    """4필드 튜플 (form: raw|b64). all_b64_raw: {key: b64str}."""
-    import base64 as _b
-    out = []
-    for k in ("virtualWalls", "mopWalls", "carpet", "thres"):
-        s = thres_raw if k == "thres" else (codec.b64_text(all_b64_raw.get(k) or "") or "")
-        if k == "thres" and form == "b64" and s:
-            s = _b.b64encode(s.encode()).decode()
-        if k != "thres" and form == "b64":
-            s = all_b64_raw.get(k) or ""
-        out.append(s)
-    return tuple(out)
 
 
 @app.route("/api/threshold/add", methods=["POST"])
 def threshold_add():
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         pts = [int(body["x1"]), int(body["y1"]), int(body["x2"]), int(body["y2"])]
         ttype = int(body.get("type", 2))
         if ttype not in (1, 2):
@@ -1093,7 +1019,7 @@ def threshold_add():
 @app.route("/api/threshold/delete", methods=["POST"])
 def threshold_delete():
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(silent=True) or {}
         did_del = int(body["id"])
         m = _load_map()
         mid = m["meta"]["map_id"]
