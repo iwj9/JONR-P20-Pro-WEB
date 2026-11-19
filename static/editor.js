@@ -5,6 +5,7 @@ let SELECTED = [];            // 방 선택 순서
 let ZONES = [];               // {id, x0,y0,x1,y1}
 let ZONE_TASK = false;        // 구역 청소 시작됨(청소 중에는 편집 잠금)
 let CLEANING_LOCK = false;    // 로봇이 청소 중이면 방/구역 변경 잠금
+let LAST_CLEAN_TOOL = null;   // 마지막으로 자동 적용한 청소 탭
 let ZONE_SAW_CLEAN = false;   // 실제 청소 상태를 한 번이라도 봤는지
 let ZONE_STARTED_AT = 0;
 let ELEMS = [];               // 요소 편집 대상
@@ -352,8 +353,11 @@ function drawAll() {
         ctx.restore();
       }
       if (rm.lx != null) {
-        if (sel) label(`${rm.name} (${order + 1})`, rm.lx, rm.ly, "rgba(44,213,174,.95)", "#04322a", 13.5);
-        else label(rm.name, rm.lx, rm.ly, "rgba(10,20,18,.62)", "#eafff9", 11.5);
+        const text = sel ? `${rm.name} (${order + 1})` : rm.name;
+        const bg = sel ? "rgba(44,213,174,.95)" : "rgba(10,20,18,.62)";
+        const fg = sel ? "#04322a" : "#eafff9";
+        const size = sel ? 13.5 : 11.5;
+        pendingLabels.push(() => label(text, rm.lx, rm.ly, bg, fg, size));
       }
     });
   }
@@ -517,8 +521,9 @@ function drawAll() {
       if (!locked) {
         dot([z.x0, z.y0], TC.handle, 6); dot([z.x1, z.y1], TC.handle, 6); xBtn([z.x1, z.y0]);
       }
-      label(locked ? `구역 ${i + 1} · 청소 중` : `구역 ${i + 1}`,
-            (z.x0 + z.x1) / 2, z.y0 - 13 * s, "rgba(10,20,18,.7)", "#d8fff5", 10.5);
+      const zt = locked ? `구역 ${i + 1} · 청소 중` : `구역 ${i + 1}`;
+      const zx = (z.x0 + z.x1) / 2, zy = z.y0 - 13 * s;
+      pendingLabels.push(() => label(zt, zx, zy, "rgba(10,20,18,.7)", "#d8fff5", 10.5));
     });
   }
 
@@ -1137,31 +1142,52 @@ $("wallsCancelBtn").onclick = () => {
 };
 
 /* ---------- 탭 ---------- */
+function activateTool(tool, notify = false) {
+  TOOL = tool;
+  const locked = !!window.__CLEANING || CLEANING_LOCK;
+  if (notify && locked && (TOOL === "room" || TOOL === "zone")) cleaningNotice();
+  document.querySelectorAll("#toolTabs .tab").forEach((x) => x.classList.toggle("active", x.dataset.tool === tool));
+  $("cleanPane").classList.toggle("hidden", TOOL === "walls");
+  $("wallsPane").classList.toggle("hidden", TOOL !== "walls");
+  $("roomBlock").classList.toggle("hidden", TOOL !== "room");
+  DRAFT = null; DRAG = null;
+  mapCv.style.cursor = (TOOL === "full") ? "grab" : "crosshair";
+  hint(TOOL === "full" ? "전체 청소 — ▶ 로 시작 · 좌드래그/우클릭으로 지도 이동"
+    : TOOL === "room" ? (locked
+        ? "청소 중 — 방 선택이 잠겼습니다. 변경하려면 작업을 종료하세요"
+        : "방을 클릭해 선택 (클릭 순서 = 청소 순서) · ▶ = 선택 방 청소")
+    : TOOL === "zone" ? (locked
+        ? "청소 중 — 구역 생성·수정이 잠겼습니다. 변경하려면 작업을 종료하세요"
+        : (ZONE_TASK
+          ? "구역 청소 중 — 구역은 이동/수정/삭제할 수 없습니다"
+          : "지도에 구역을 그리세요 · ▶ = 그린 구역 청소 (최대 10개)"))
+    : "요소를 골라 추가/이동/조절/삭제 후 저장하세요");
+  drawAll();
+  requestAnimationFrame(() => layoutMap && layoutMap());
+}
 document.querySelectorAll("#toolTabs .tab").forEach((t) => {
-  t.onclick = () => {
-    TOOL = t.dataset.tool;
-    const locked = !!window.__CLEANING || CLEANING_LOCK;
-    if (locked && (TOOL === "room" || TOOL === "zone")) cleaningNotice();
-    document.querySelectorAll("#toolTabs .tab").forEach((x) => x.classList.toggle("active", x === t));
-    $("cleanPane").classList.toggle("hidden", TOOL === "walls");
-    $("wallsPane").classList.toggle("hidden", TOOL !== "walls");
-    $("roomBlock").classList.toggle("hidden", TOOL !== "room");
-    DRAFT = null; DRAG = null;
-    mapCv.style.cursor = (TOOL === "full") ? "grab" : "crosshair";
-    hint(TOOL === "full" ? "전체 청소 — ▶ 로 시작 · 좌드래그/우클릭으로 지도 이동"
-      : TOOL === "room" ? (locked
-          ? "청소 중 — 방 선택이 잠겼습니다. 변경하려면 작업을 종료하세요"
-          : "방을 클릭해 선택 (클릭 순서 = 청소 순서) · ▶ = 선택 방 청소")
-      : TOOL === "zone" ? (locked
-          ? "청소 중 — 구역 생성·수정이 잠겼습니다. 변경하려면 작업을 종료하세요"
-          : (ZONE_TASK
-            ? "구역 청소 중 — 구역은 이동/수정/삭제할 수 없습니다"
-            : "지도에 구역을 그리세요 · ▶ = 그린 구역 청소 (최대 10개)"))
-      : "요소를 골라 추가/이동/조절/삭제 후 저장하세요");
-    drawAll();
-    requestAnimationFrame(() => layoutMap && layoutMap());
-  };
+  t.onclick = () => activateTool(t.dataset.tool, true);
 });
+
+/* 17.9 clean-type-status → 탭. (RobotStatus: Full=2..7, Area=8..10, Zone=11..13) */
+function toolFromTask(task) {
+  const n = Number(task);
+  if (!Number.isFinite(n)) return null;
+  if ([2, 3, 4, 5, 6, 7].includes(n)) return "full";
+  if ([8, 9, 10].includes(n)) return "room";
+  if ([11, 12, 13].includes(n)) return "zone";
+  return null;
+}
+function syncCleanMode(s) {
+  if (!window.__CLEANING) { LAST_CLEAN_TOOL = null; return; }
+  const tool = toolFromTask(s?.task);
+  if (!tool || tool === LAST_CLEAN_TOOL) return;
+  LAST_CLEAN_TOOL = tool;
+  activateTool(tool, false);
+  hint(tool === "room" ? "방 청소 중 — 선택된 방을 표시합니다"
+    : tool === "zone" ? "구역 청소 중 — 지정된 구역을 표시합니다"
+    : "전체 청소 중입니다");
+}
 
 const HELP = {
   thres: {
