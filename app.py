@@ -194,8 +194,10 @@ def action():
     name = str(data.get("name", "")).lower()
     if name not in ACTION_CODES and name not in ("spot", "room", "zone"):
         return jsonify({"ok": False, "error": f"unknown action: {name}"}), 400
-    default_ch = "cloud" if name in ("start", "room", "zone", "spot") else "local"
-    channel = _chan_get("actions", name, default_ch)
+    # 스테이션 수동 작업은 로컬 miIO가 ack만 주고 실제 동작하지 않는다 → 클라우드 전용
+    CLOUD_ONLY = {"wash", "dry", "collect"}
+    default_ch = "cloud" if name in ("start", "room", "zone", "spot") or name in CLOUD_ONLY else "local"
+    channel = "cloud" if name in CLOUD_ONLY else _chan_get("actions", name, default_ch)
     if channel == "cloud":
         try:
             if name in ("start", "room", "zone", "spot"):
