@@ -5,7 +5,6 @@ let SELECTED = [];            // 방 선택 순서
 let ZONES = [];               // {id, x0,y0,x1,y1}
 let ZONE_TASK = false;        // 구역 청소 시작됨(청소 중에는 편집 잠금)
 let CLEANING_LOCK = false;    // 로봇이 청소 중이면 방/구역 변경 잠금
-const TASK_KEY = "jonr.cleanTask";
 let ZONE_SAW_CLEAN = false;   // 실제 청소 상태를 한 번이라도 봤는지
 let ZONE_STARTED_AT = 0;
 let ELEMS = [];               // 요소 편집 대상
@@ -36,25 +35,51 @@ const KEY_TO_KIND = { virtualWalls: "virtual", mopWalls: "mop", carpet: "carpet"
 const CARPET_STRAT = ["적응", "회피", "통과", "무시"];
 const CARPET_EXPANDED = new Set();
 
-/* 청소 작업 대상 저장/복원 (앱 재시작 후에도 현재 대상 표시) */
-function saveCleanTask(active) {
-  try {
-    localStorage.setItem(TASK_KEY, JSON.stringify({
-      map_id: MAPMETA?.map_id, active,
-      selected: SELECTED.slice(),
-      zones: ZONES.map(z => ({ id: z.id, x0: z.x0, y0: z.y0, x1: z.x1, y1: z.y1 })),
-      savedAt: Date.now(),
-    }));
-  } catch (e) { /* 저장 실패는 무시 */ }
+/* 현재 청소 대상: MiOT 17.34 clean-values (공식 플러그인도 같은 필드를 읽는다) */
+function parseCleanTargets(raw) {
+  let arr = raw;
+  if (typeof arr === "string") {
+    try { arr = JSON.parse(arr); } catch (e) { return null; }
+  }
+  if (!Array.isArray(arr) || !arr.length) return null;
+  const nums = arr.map(v => (typeof v === "number" ? v : Number(v)));
+  if (nums.some(n => !Number.isFinite(n))) return null;
+  const maxAbs = Math.max(...nums.map(Math.abs));
+  // 구역은 구역당 8개 좌표(4점)로 전달된다. 방 ID는 훨씬 작은 정수다.
+  if (nums.length % 8 === 0 && maxAbs > 50) {
+    const zones = [];
+    for (let i = 0; i < nums.length; i += 8) {
+      const p = nums.slice(i, i + 8);
+      const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
+      zones.push({ id: seq + i / 8,
+                   x0: Math.min(...xs), y0: Math.min(...ys),
+                   x1: Math.max(...xs), y1: Math.max(...ys) });
+    }
+    return { kind: "zone", zones };
+  }
+  return { kind: "room", selected: nums.map(Math.round) };
 }
-function loadCleanTask() {
-  try {
-    const raw = localStorage.getItem(TASK_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
-}
-function clearCleanTask() {
-  try { localStorage.removeItem(TASK_KEY); } catch (e) { /* 무시 */ }
+function syncCleanTargets(s) {
+  if (!window.__CLEANING) {
+    ZONE_TASK = false;
+    return;
+  }
+  const parsed = parseCleanTargets(s?.task_targets);
+  if (!parsed) return;
+  if (parsed.kind === "room") {
+    SELECTED = ROOMS.length
+      ? parsed.selected.filter(id => ROOMS.some(rm => rm.room_id === id))
+      : parsed.selected.slice();
+    ZONES = [];
+    ZONE_TASK = false;
+  } else {
+    SELECTED = [];
+    ZONES = parsed.zones;
+    ZONE_TASK = true;
+    ZONE_SAW_CLEAN = true;
+    ZONE_STARTED_AT = Date.now();
+    seq = Math.max(seq, ...ZONES.map(z => z.id + 1));
+  }
 }
 function cleaningNotice() {
   toast("현재 청소 중입니다. 방·구역을 변경할 수 없습니다. 변경하려면 작업을 종료하세요.");
@@ -794,7 +819,6 @@ function syncZoneCleaning(cleaning, st, rstat) {
   if (wasLocked !== CLEANING_LOCK) {
     renderRooms(); drawAll();
     if (!CLEANING_LOCK) {
-      clearCleanTask();
       DRAFT = null; DRAG = null;
       hint("청소 종료 — 방/구역 변경이 가능합니다");
     }
@@ -1002,7 +1026,6 @@ async function startSelectedRooms() {
   try {
     await post("/api/clean/room", { room_ids: SELECTED });
     CLEANING_LOCK = true;
-    saveCleanTask("room");
     toast(`${SELECTED.length}개 방 순서대로 청소 시작`);
     refresh();
   } catch (e) { toast("실패: " + e.message); }
@@ -1021,7 +1044,6 @@ async function startZones() {
     CLEANING_LOCK = true;
     ZONE_SAW_CLEAN = false;
     ZONE_STARTED_AT = Date.now();
-    saveCleanTask("zone");
     DRAFT = null; DRAG = null;
     renderZoneInfo(); renderRooms(); drawAll();
     toast(`${rects.length}개 구역 청소 시작 — 청소 중에는 수정할 수 없습니다`);
@@ -1239,24 +1261,7 @@ async function loadMap(refresh) {
       ELEMS = buildElems();
       ORIGINAL = clone(ELEMS);
       CLEANING_LOCK = !!window.__CLEANING;
-      const task = loadCleanTask();
-      if (task && CLEANING_LOCK && String(task.map_id) === String(MAPMETA.map_id)) {
-        SELECTED = (Array.isArray(task.selected) ? task.selected : [])
-          .filter(id => ROOMS.some(rm => rm.room_id === id));
-        ZONES = (Array.isArray(task.zones) ? task.zones : [])
-          .filter(z => [z.x0, z.y0, z.x1, z.y1].every(Number.isFinite))
-          .map(z => ({ id: +z.id || seq++, x0: +z.x0, y0: +z.y0, x1: +z.x1, y1: +z.y1 }));
-        ZONE_TASK = task.active === "zone";
-        ZONE_SAW_CLEAN = true;
-        ZONE_STARTED_AT = Date.now();
-        seq = Math.max(seq, ...ZONES.map(z => z.id + 1));
-      } else {
-        clearCleanTask();
-        SELECTED = [];
-        ZONES = [];
-        ZONE_TASK = false;
-        ZONE_SAW_CLEAN = false;
-      }
+      syncCleanTargets(window.__S || {});
       renderRooms(); renderZoneInfo(); renderKindChips(); renderElems();
       applyZoom(ZOOM);
       refreshLive();

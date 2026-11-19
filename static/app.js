@@ -129,6 +129,9 @@ async function refresh() {
   if (typeof window.syncZoneCleaning === "function") {
     window.syncZoneCleaning(cleaning, st, s.robot_status);
   }
+  if (typeof window.syncCleanTargets === "function") {
+    window.syncCleanTargets(s);
+  }
 }
 
 /* ---------- 동작 ---------- */
