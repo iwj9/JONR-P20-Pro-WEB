@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import threading
 import time
+import webbrowser
 from flask import Flask, jsonify, request, send_from_directory, Response, abort
 
 from jonr import JonrDevice
@@ -23,6 +25,33 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 ALLOWED_HOSTS = {"127.0.0.1:5000", "localhost:5000", "127.0.0.1", "localhost"}
 ALLOWED_ORIGINS = {"http://127.0.0.1:5000", "http://localhost:5000"}
+SERVER_HOST = "127.0.0.1"
+SERVER_PORT = 5000
+URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
+
+
+def port_in_use(host=SERVER_HOST, port=SERVER_PORT):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.3)
+        return sock.connect_ex((host, port)) == 0
+
+
+def fail_port_busy():
+    print("\n[오류] 포트 5000이 이미 사용 중입니다. JONR 웹앱을 중복 실행할 수 없습니다.")
+    print("       기존 앱을 종료하거나 다른 프로세스가 5000번 포트를 쓰는지 확인하세요.")
+    print("       예: netstat -ano | findstr :5000")
+    if sys.stdin.isatty():
+        try:
+            input("       확인 후 Enter를 누르면 종료합니다...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    raise SystemExit(1)
+
+
+def open_browser_later():
+    timer = threading.Timer(1.0, lambda: webbrowser.open(URL))
+    timer.daemon = True
+    timer.start()
 
 
 @app.before_request
@@ -1088,7 +1117,10 @@ if __name__ == "__main__":
         if ok:
             xc_cloud.invalidate()
         raise SystemExit(0 if ok else 1)
+    if port_in_use():
+        fail_port_busy()
     os.makedirs(STATIC_DIR, exist_ok=True)
     cloud_session.ensure_session(preferred=_preferred_server())
-    print("JONR P20 Pro dashboard → http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    open_browser_later()
+    print(f"JONR P20 Pro dashboard → {URL}")
+    app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False, threaded=True)
