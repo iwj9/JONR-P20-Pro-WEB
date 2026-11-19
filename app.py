@@ -138,6 +138,7 @@ def config():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     cfg = {"ip": ip, "token": token, "did": did,
+           "server": saved.get("server", ""),
            "force_cloud": bool(data.get("force_cloud", saved.get("force_cloud")))}
     save_config(cfg)
     return jsonify({"ok": True, "info": info})
@@ -306,11 +307,16 @@ ACTION_CODES = {
 }
 
 
+def _preferred_server():
+    """설정에 저장된 서버를 우선, 없으면 마지막 지도 다운로드 서버를 쓴다."""
+    return str(load_config().get("server") or "").strip() or _MAP_CACHE.get("srv")
+
+
 def _cloud_action(siid, aiid, params):
     cfg = load_config()
     did = (cfg.get("did") or "").strip()
     resp, srv = xc_cloud.action_on_device_server(did, siid, aiid, params,
-                                                prefer=_MAP_CACHE.get("srv"))
+                                                prefer=_preferred_server())
     res = (resp.get("result") or {}) if isinstance(resp, dict) else {}
     if isinstance(res, dict) and res.get("code") not in (None, 0):
         raise RuntimeError(f"기기 거부: {res}")
@@ -659,7 +665,7 @@ def maps_switch():
             if not did:
                 raise RuntimeError("로컬 전환 실패 + did 없음. config.json did 확인.")
             xc_cloud.action_on_device_server(did, 17, 9, [mid],
-                                             prefer=_MAP_CACHE.get("srv"))
+                                             prefer=_preferred_server())
         time.sleep(3)
         _invalidate_map_cache()
         m = _load_map(refresh=True)
@@ -837,7 +843,7 @@ def walls_save():
             payload = json.dumps({"index": i // 5, "total": total, key: chunk},
                                  separators=(",", ":"))
             last, _srv = xc_cloud.action_on_device_server(
-                did, 17, action, [payload], prefer=_MAP_CACHE.get("srv"))
+                did, 17, action, [payload], prefer=_preferred_server())
             res = (last.get("result") or {}) if isinstance(last, dict) else {}
             if isinstance(res, dict) and res.get("code") not in (None, 0):
                 raise RuntimeError(f"기기 거부: {res}")
@@ -948,7 +954,7 @@ def _send_carpet_marking(items, map_id, wait=7):
         payload = json.dumps({"index": idx, "total": total,
                               "carpetlist": chunk}, separators=(",", ":"))
         resp, _srv = xc_cloud.action_on_device_server(
-            did, 17, 54, [payload], prefer=_MAP_CACHE.get("srv"))
+            did, 17, 54, [payload], prefer=_preferred_server())
         last = resp
         res = (resp.get("result") or {}) if isinstance(resp, dict) else {}
         if isinstance(res, dict) and res.get("code") not in (None, 0):
@@ -1054,6 +1060,15 @@ def threshold_format():
 
 
 if __name__ == "__main__":
+    if "--setup" in sys.argv:
+        setup = cloud_session.setup_interactive()
+        if not setup:
+            raise SystemExit(1)
+        cfg = load_config()
+        cfg.update(setup)
+        save_config(cfg)
+        print("[설정] config.json에 IP/토큰/DID/서버를 저장했습니다. 이제 `python app.py`만 실행하면 됩니다.")
+        raise SystemExit(0)
     if "--login" in sys.argv:
         raise SystemExit(0 if cloud_session.login_interactive() else 1)
     os.makedirs(STATIC_DIR, exist_ok=True)

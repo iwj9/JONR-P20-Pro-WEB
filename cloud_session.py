@@ -30,6 +30,7 @@ TOKEN_EXTRACTOR_URL = (
 )
 _EXTRACTOR_PATH = os.path.join(tempfile.gettempdir(), "token_extractor.py")
 _SESSION_KEYS = ("_serviceToken", "_ssecurity", "userId", "_device_id", "_agent")
+TARGET_MODEL = "xtl.vacuum.xm2216"
 
 
 def session_exists():
@@ -155,6 +156,103 @@ def login_interactive():
     except Exception as exc:
         print(f"[클라우드] 세션 저장 실패(무시): {exc}")
     return True
+
+
+def _discover_targets(conn):
+    """로그인한 커넥터로 P20 Pro가 있는 서버와 기기 정보를 찾는다."""
+    found = {}
+    for srv in SERVERS:
+        homes = []
+        seen = set()
+        try:
+            resp = conn.get_homes(srv)
+            result = resp.get("result") if isinstance(resp, dict) else None
+            for home in (result or {}).get("homelist") or []:
+                key = (home.get("id"), conn.userId)
+                if key[0] is not None and key not in seen:
+                    seen.add(key)
+                    homes.append(key)
+        except Exception:
+            pass
+        try:
+            resp = conn.get_dev_cnt(srv)
+            result = resp.get("result") if isinstance(resp, dict) else None
+            for home in ((result or {}).get("share") or {}).get("share_family") or []:
+                key = (home.get("home_id"), home.get("home_owner"))
+                if key[0] is not None and key not in seen:
+                    seen.add(key)
+                    homes.append(key)
+        except Exception:
+            pass
+        devices = []
+        for home_id, owner in homes:
+            try:
+                resp = conn.get_devices(srv, home_id, owner)
+                result = resp.get("result") if isinstance(resp, dict) else None
+            except Exception:
+                continue
+            for item in (result or {}).get("device_info") or []:
+                if str(item.get("model", "")).lower() != TARGET_MODEL:
+                    continue
+                devices.append({
+                    "ip": str(item.get("localip") or "").strip(),
+                    "token": str(item.get("token") or "").strip(),
+                    "did": str(item.get("did") or "").strip(),
+                    "name": str(item.get("name") or "").strip(),
+                })
+        if devices:
+            found[srv] = devices
+    return found
+
+
+def setup_interactive():
+    """한 번의 로그인으로 세션과 기기 설정을 모두 만든다."""
+    xc = load_connector()
+    if xc is None:
+        return None
+    conn = xc.PasswordXiaomiCloudConnector()
+    if not conn.login():
+        print("클라우드 로그인에 실패했습니다. Mi Home 계정을 확인한 뒤 다시 시도하세요.")
+        return None
+    try:
+        save_session(conn.__dict__)
+        print("[클라우드] 세션을 저장했습니다. (.xc_session.json)")
+    except Exception as exc:
+        print(f"[클라우드] 세션 저장 실패: {exc}")
+        return None
+
+    found = _discover_targets(conn)
+    if not found:
+        print(f"로그인은 성공했지만 {TARGET_MODEL} 기기를 찾지 못했습니다.")
+        return None
+    servers = list(found.keys())
+    print("\n기기를 찾은 서버:")
+    for srv in servers:
+        print(f"  - {srv} : {len(found[srv])}대")
+    default = servers[0] if len(servers) == 1 else ""
+    prompt = f"적용할 서버를 입력하세요 (대소문자 무시)"
+    if default:
+        prompt += f" [기본: {default}]"
+    print(prompt)
+    lower_map = {s.lower(): s for s in servers}
+    chosen = None
+    while chosen is None:
+        answer = input("서버: ").strip().lower()
+        if not answer and default:
+            answer = default
+        chosen = lower_map.get(answer)
+        if chosen is None:
+            print("목록에 없는 서버입니다. 다시 입력하세요: " + ", ".join(servers))
+    devices = found[chosen]
+    if len(devices) > 1:
+        print(f"같은 서버에 {len(devices)}대가 있어 첫 번째 기기를 사용합니다.")
+    dev = devices[0]
+    if not dev["ip"] or not dev["token"]:
+        print("기기의 IP 또는 토큰을 읽지 못했습니다.")
+        return None
+    masked = dev["token"][:4] + "…" + dev["token"][-4:] if len(dev["token"]) == 32 else "(길이 비정상)"
+    print(f"선택: 서버={chosen} IP={dev['ip']} DID={dev['did']} token={masked}")
+    return {"ip": dev["ip"], "token": dev["token"], "did": dev["did"], "server": chosen}
 
 
 def file_url(conn, base, obj):

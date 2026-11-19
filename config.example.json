@@ -2,5 +2,6 @@
   "ip": "",
   "token": "",
   "did": "",
+  "server": "",
   "force_cloud": false
 }
