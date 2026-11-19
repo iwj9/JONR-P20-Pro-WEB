@@ -39,12 +39,12 @@ const RSTATUS_KO = {
 const STATION_STATES = new Set(["WashMop", "HotDry", "WindDry", "ClctDust",
   "BackWashMop", "BackClctDust", "BPReturn", "BPPauseReturn", "BackWashPause", "BackClctPause"]);
 const CLEAN_STATES = [2, 4, 5, 7];
-/* 세척 복귀·일시정지 등은 작업 중이지만, 열풍/송풍 건조는 청소가 끝난 뒤의 후처리다 */
-const ACTIVE_STATION_STATES = new Set(["WashMop", "ClctDust",
-  "BackWashMop", "BackClctDust", "BPReturn", "BPPauseReturn",
-  "BackWashPause", "BackClctPause"]);
-const POST_CLEAN_STATES = new Set(["HotDry", "WindDry"]);
-const TASK_STATE_CODES = new Set([2, 4, 5, 6, 7, 10, 11, 12, 17, 19, 20, 21, 23]);
+/* 세척 복귀·일시정지는 작업 중이지만, 건조/집진은 청소가 끝난 뒤의 스테이션 후처리다 */
+const ACTIVE_STATION_STATES = new Set(["WashMop",
+  "BackWashMop", "BPReturn", "BPPauseReturn", "BackWashPause"]);
+const POST_CLEAN_STATES = new Set(["HotDry", "WindDry",
+  "ClctDust", "BackClctDust", "BackClctPause"]);
+const TASK_STATE_CODES = new Set([2, 4, 5, 6, 7, 10, 12, 17, 19, 20, 21]);
 const TASK_CODE_RANGE = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
 
 function hasActiveTask(s) {
