@@ -13,7 +13,7 @@ try {
   document.documentElement.dataset.theme = "system";
 }
 </script>
-<link rel="stylesheet" href="/static/styles.css?v=57">
+<link rel="stylesheet" href="/static/styles.css?v=58">
 </head>
 <body>
 <div class="rail" id="rail">
@@ -37,9 +37,12 @@ try {
           <div class="mp-text" id="mapPlaceholderText">지도 불러오는 중…</div>
         </div>
       </div>
-      <div class="zoom-ctl">
-        <button id="zoomOut">−</button><span id="zoomVal">100%</span>
-        <button id="zoomIn">+</button><button id="zoomFit">⤢</button>
+      <div class="map-controls">
+        <div class="zoom-hint">Ctrl + 스크롤 : 축소, 확대<br>휠 클릭 or 우클릭 드래그 : 이동</div>
+        <div class="zoom-ctl">
+          <button id="zoomOut">−</button><span id="zoomVal">100%</span>
+          <button id="zoomIn">+</button><button id="zoomFit">⤢</button>
+        </div>
       </div>
       <div class="state-badge" id="stateBadge">–</div>
     </div>
@@ -290,10 +293,10 @@ try {
   <dl id="helpBody"></dl>
   <div class="row"><button class="btn" onclick="document.getElementById('helpDlg').close()">닫기</button></div>
 </dialog>
-<script src="/static/tips.js?v=57"></script>
-<script src="/static/app.js?v=57"></script>
-<script src="/static/editor.js?v=57"></script>
-<script src="/static/panels.js?v=57"></script>
+<script src="/static/tips.js?v=58"></script>
+<script src="/static/app.js?v=58"></script>
+<script src="/static/editor.js?v=58"></script>
+<script src="/static/panels.js?v=58"></script>
 <script>
 (async () => {
   await loadCfg();
