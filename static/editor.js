@@ -1032,7 +1032,9 @@ async function startSelectedRooms() {
     await post("/api/clean/room", { room_ids: SELECTED });
     CLEANING_LOCK = true;
     toast(`${SELECTED.length}개 방 순서대로 청소 시작`);
-    refresh();
+    $("startBtn").textContent = "❚❚ 일시정지";
+    $("stopBtn").disabled = false;
+    setTimeout(refresh, 1500);
   } catch (e) { toast("실패: " + e.message); }
 }
 async function startZones() {
@@ -1052,7 +1054,9 @@ async function startZones() {
     DRAFT = null; DRAG = null;
     renderZoneInfo(); renderRooms(); drawAll();
     toast(`${rects.length}개 구역 청소 시작 — 청소 중에는 수정할 수 없습니다`);
-    refresh();
+    $("startBtn").textContent = "❚❚ 일시정지";
+    $("stopBtn").disabled = false;
+    setTimeout(refresh, 1500);
   } catch (e) { toast("실패: " + e.message); }
 }
 

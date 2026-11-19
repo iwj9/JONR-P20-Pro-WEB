@@ -161,10 +161,14 @@ async function act(name, extra) {
   try {
     const r = await post("/api/action", { name, ...(extra || {}) });
     toast(r.transport === "local" ? "전송됨" : "클라우드로 전송됨");
-    await sleep(600);
-    refresh();
+    if (["start", "room", "zone", "spot"].includes(name)) {
+      $("startBtn").textContent = "❚❚ 일시정지";
+      $("stopBtn").disabled = false;
+    }
+    // 상태 반영은 조금 뒤에 confirmation으로 처리한다. (클릭 응답을 막지 않음)
+    setTimeout(refresh, 1500);
     return r;
-  } catch (e) { toast("실패: " + e.message); throw e; }
+  } catch (e) { toast("실패: " + e.message); setTimeout(refresh, 300); throw e; }
 }
 $("startBtn").onclick = async () => {
   const s = window.__S || {};

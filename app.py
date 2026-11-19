@@ -180,11 +180,7 @@ def _cloud_start(name, data):
         params = [6, ""]
     else:
         raise ValueError(name)
-    try:
-        _cloud_action(17, 3, [])          # 이전 작업 닫기
-    except Exception:
-        pass
-    time.sleep(2)
+    # 공식 플러그인처럼 start-clean 한 번만 보낸다. (불필요한 stop + 2초 대기 제거)
     return _cloud_action(17, 1, params)
 
 
