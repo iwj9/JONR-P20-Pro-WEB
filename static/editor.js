@@ -154,8 +154,32 @@ function hint(msg) {
 
 
 /* ---------- 줌 ---------- */
-function applyZoom(z) {
-  ZOOM = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+function mapFitWidth() {
+  const cw = mapWrap.clientWidth, ch = mapWrap.clientHeight;
+  const ar = (MAPMETA.img_w || 1) / (MAPMETA.img_h || 1);
+  return Math.min(cw, ch * ar);
+}
+function mapBaseX(width) {
+  // margin:0 auto 는 폭이 컨테이너보다 커지면 여백을 0으로 처리한다.
+  const cw = mapWrap.clientWidth;
+  return Math.max(0, (cw - width) / 2);
+}
+function applyZoom(z, anchor) {
+  const oldZoom = ZOOM;
+  const nextZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  if (anchor && nextZoom !== oldZoom) {
+    const fitW = mapFitWidth();
+    // 확대 전 커서 아래의 지도 좌표(배율 1 기준)
+    const baseX0 = mapBaseX(fitW * oldZoom);
+    const qx = (anchor.x - (baseX0 + PANX)) / oldZoom;
+    const qy = (anchor.y - PANY) / oldZoom;
+    // 확대 후에도 같은 지도 좌표가 커서 아래에 오도록 팬 보정
+    const baseX1 = mapBaseX(fitW * nextZoom);
+    PANX = anchor.x - baseX1 - qx * nextZoom;
+    PANY = anchor.y - qy * nextZoom;
+    clampPan();
+  }
+  ZOOM = nextZoom;
   layoutMap();
   $("zoomVal").textContent = Math.round(ZOOM * 100) + "%";
   drawAll();
@@ -167,15 +191,12 @@ function clampPan() {
   PANY = Math.max(-my, Math.min(my, PANY));
 }
 function applyPan() {
-  mapInner.style.transform = `translate(${Math.round(PANX)}px, ${Math.round(PANY)}px)`;
+  mapInner.style.transform = `translate(${PANX}px, ${PANY}px)`;
 }
 function layoutMap() {
   if (!MAPMETA) return;
-  const cw = mapWrap.clientWidth;
-  const ch = mapWrap.clientHeight;
-  const ar = (MAPMETA.img_w || 1) / (MAPMETA.img_h || 1);
-  const fitW = Math.min(cw, ch * ar);
-  mapInner.style.width = Math.round(fitW * ZOOM) + "px";
+  const fitW = mapFitWidth();
+  mapInner.style.width = fitW * ZOOM + "px";
   mapInner.style.margin = "0 auto";
   applyPan();
 }
@@ -187,7 +208,12 @@ mapWrap.addEventListener("wheel", (e) => {
   if (!MAPMETA) return;
   if (e.ctrlKey || e.metaKey) {           // Ctrl(⌘)+휠 = 확대/축소
     e.preventDefault();
-    applyZoom(ZOOM * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+    const rect = mapWrap.getBoundingClientRect();
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    applyZoom(ZOOM * factor, {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
   }
 }, { passive: false });
 
