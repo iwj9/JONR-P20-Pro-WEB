@@ -1,0 +1,30 @@
+# 로컬 비밀/런타임 (절대 커밋 금지)
+config.json
+.xc_session.pkl
+.channel_map.json
+.thres_winner
+
+# 개인 자료/연구 산출물
+private/
+*.pcap
+*.pcapng
+map_backup_*.json
+selftest_map.png
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# 편집기/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# 빌드/배포 산출물
+dist/
+build/

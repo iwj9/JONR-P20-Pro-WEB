@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JONR P20 Pro</title>
+<script>
+try {
+  const t = localStorage.getItem("jonr.theme");
+  document.documentElement.dataset.theme =
+    (t === "light" || t === "dark") ? t : "system";
+} catch (e) {
+  document.documentElement.dataset.theme = "system";
+}
+</script>
+<link rel="stylesheet" href="/static/styles.css?v=53">
+</head>
+<body>
+<div class="rail" id="rail">
+
+  <!-- ===== 1. Map Viewer (정사각) ===== -->
+  <section class="win win-map" id="winMap">
+    <div class="map-stats">
+      <div class="ms"><b id="statArea">0</b><span>m²</span><em>면적</em></div>
+      <div class="ms"><b id="statTime">0</b><span>min</span><em>시간</em></div>
+      <div class="ms"><b id="statBattery">–</b><span>%</span><em>배터리</em></div>
+    </div>
+    <button class="gear" id="cfgBtn" title="설정">⚙</button>
+    <div class="map-wrap" id="mapWrap">
+      <div class="map-inner" id="mapInner">
+        <img id="mapImg" alt="">
+        <canvas id="mapCanvas"></canvas>
+      </div>
+      <div class="map-placeholder" id="mapPlaceholder">
+        <div class="mph">
+          <div class="spinner" id="mapSpinner"></div>
+          <div class="mp-text" id="mapPlaceholderText">지도 불러오는 중…</div>
+        </div>
+      </div>
+      <div class="zoom-ctl">
+        <button id="zoomOut">−</button><span id="zoomVal">100%</span>
+        <button id="zoomIn">+</button><button id="zoomFit">⤢</button>
+      </div>
+      <div class="state-badge" id="stateBadge">–</div>
+    </div>
+  </section>
+
+  <!-- ===== 2. 메인 ===== -->
+  <section class="win win-side" id="winMain">
+    <div class="win-head"><h1>JONR P20 Pro</h1><span class="sub" id="mainSub">–</span></div>
+
+    <div class="seg modes" id="toolTabs">
+      <button class="tab active" data-tool="full">전체 청소</button>
+      <button class="tab" data-tool="room">방 청소</button>
+      <button class="tab" data-tool="zone">구역 청소</button>
+      <button class="tab" data-tool="walls">금지 구역</button>
+    </div>
+
+    <div class="block">
+      <div class="block-title">지도</div>
+      <div class="row">
+        <select id="mapSel"></select>
+        <button class="btn" id="mapSwitchBtn">전환</button>
+      </div>
+    </div>
+
+    <!-- 청소 메뉴 -->
+    <div id="cleanPane">
+      <div class="block">
+        <div class="block-title">청소 모드</div>
+        <div class="seg grid2" id="modeSeg">
+          <button data-v="0">흡입 + 물걸레</button>
+          <button data-v="1">흡입만</button>
+          <button data-v="2">물걸레만</button>
+          <button data-v="3">흡입 후 물걸레</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">흡입력 <span class="dim" id="fanDim"></span></div>
+        <div class="seg" id="fanSeg">
+          <button data-v="0">저소음</button><button data-v="1">표준</button>
+          <button data-v="2">강력</button><button data-v="3">터보</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">물걸레 습도 <span class="dim" id="waterDim"></span></div>
+        <div class="seg" id="waterSeg">
+          <button data-v="0">낮음</button><button data-v="1">보통</button><button data-v="2">높음</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">청소 횟수</div>
+        <div class="seg" id="countSeg">
+          <button data-v="1">1회</button><button data-v="2">2회</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">청소 경로</div>
+        <div class="seg" id="routeSeg">
+          <button data-v="0">쾌속</button><button data-v="1">일반</button><button data-v="2">꼼꼼</button>
+        </div>
+      </div>
+
+      <div class="block" id="roomBlock">
+        <div class="block-title">방 선택 <span class="dim">클릭 순서 = 청소 순서</span></div>
+        <div class="chips" id="roomChips"></div>
+      </div>
+
+      <div class="block">
+        <div class="block-title">동작</div>
+        <div class="action-grid">
+          <div class="col">
+            <button class="btn primary" id="startBtn">▶ 청소 시작</button>
+            <button class="btn" id="stopBtn">■ 작업 종료</button>
+            <button class="btn" id="dockBtn">⌂ 복귀</button>
+          </div>
+          <div class="col">
+            <button class="btn" id="collectBtn">먼지 비움</button>
+            <button class="btn" id="washBtn">걸레 세척</button>
+            <button class="btn" id="dryBtn">걸레 건조</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 구역 설정 메뉴 -->
+    <div id="wallsPane" class="hidden">
+      <div class="block">
+        <div class="block-title">영역 선택</div>
+        <div class="chips" id="kindChips">
+          <button class="chip sel" data-kind="thres">문턱</button>
+          <button class="chip" data-kind="virtual">가상벽/진입금지</button>
+          <button class="chip" data-kind="mop">물걸레 금지</button>
+          <button class="chip" data-kind="carpet">카펫</button>
+        </div>
+      </div>
+      <div class="block" id="typeBlock">
+        <div class="block-title">종류</div>
+        <div class="row">
+          <select id="elemType"></select>
+          <button class="help-btn" id="typeHelp" title="설명">?</button>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-title">목록</div>
+        <div id="elemList" class="list"></div>
+      </div>
+      <div class="block">
+        <div class="row">
+          <button class="btn primary" id="wallsSaveBtn" disabled>변경 없음</button>
+          <button class="btn ghost" id="wallsCancelBtn">편집 취소</button>
+        </div>
+        <p class="hint" id="wallsHint">지도에서 클릭-클릭 또는 드래그로 추가</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 3. 설정 ===== -->
+  <section class="win win-side hidden" id="winSettings">
+    <div class="win-head"><h2>설정</h2><button class="close" data-close="winSettings">✕</button></div>
+    <div class="block">
+      <div class="block-title">테마</div>
+      <div class="seg" id="themeSeg">
+        <button type="button" data-theme-v="system">시스템</button>
+        <button type="button" data-theme-v="light">라이트</button>
+        <button type="button" data-theme-v="dark">다크</button>
+      </div>
+    </div>
+    <button class="rowbtn" data-open="winRobot">로봇 설정 <span>›</span></button>
+    <button class="rowbtn" data-open="winStation">스테이션 설정 <span>›</span></button>
+    <button class="rowbtn" data-open="winConsum">소모품 및 유지보수 <span>›</span></button>
+    <button class="rowbtn" id="locateBtn">로봇 위치 찾기 <span>🔔</span></button>
+
+    <div class="conn-block">
+      <div class="block-title">연결 설정</div>
+      <label class="field">청소기 IP
+        <input id="cfgIp" value="" inputmode="decimal" autocomplete="off">
+      </label>
+      <div class="field">
+        <div class="field-head">
+          <label for="cfgToken">Token (32자리)</label>
+          <button type="button" class="field-link" id="cfgTokenEye" title="토큰 보기">보기</button>
+        </div>
+        <input id="cfgToken" type="password" placeholder="32자리 hex" autocomplete="off" spellcheck="false">
+      </div>
+      <label class="field">DID
+        <input id="cfgDid" placeholder="DID" autocomplete="off">
+      </label>
+      <label class="switch"><input type="checkbox" id="cfgForceCloud"><span>모든 명령을 클라우드로</span></label>
+      <button class="btn primary full" id="cfgSave" type="button">저장</button>
+      <p id="cfgMsg" class="hint conn-msg"></p>
+    </div>
+  </section>
+
+  <!-- ===== 4. 로봇 설정 ===== -->
+  <section class="win win-side hidden" id="winRobot">
+    <div class="win-head"><h2>로봇 설정</h2><button class="close" data-close="winRobot">✕</button></div>
+
+    <div class="block">
+      <div class="block-title">카펫 청소 방식</div>
+      <div class="seg grid2" id="carpetSeg">
+        <button data-v="0">카펫 적응</button>
+        <button data-v="1">카펫 회피</button>
+        <button data-v="2">카펫 통과</button>
+        <button data-v="3">카펫 무시</button>
+      </div>
+      <label class="switch" id="boostWrap"><input type="checkbox" id="optCarpetBoost"><span>카펫 부스트</span></label>
+      <label class="switch" id="twiceWrap"><input type="checkbox" id="optCarpetTwice"><span>카펫 2회 청소</span></label>
+      <label class="switch" id="firstWrap"><input type="checkbox" id="optCarpetFirst"><span>카펫 먼저 청소</span></label>
+    </div>
+
+    <div class="block">
+      <label class="switch"><input type="checkbox" id="optMopAugment"><span>물걸레 확장</span></label>
+      <label class="switch"><input type="checkbox" id="optBreakClean"><span>중단된 구역 이어서 청소</span></label>
+      <label class="switch"><input type="checkbox" id="optChildLock"><span>차일드락</span></label>
+    </div>
+
+    <div class="block">
+      <label class="switch"><input type="checkbox" id="optDisturb"><span>청소금지 시간</span></label>
+      <div id="disturbBox" class="hidden">
+        <div class="row">
+          <label class="mini">시작 <input type="time" id="dndStart" value="22:00"></label>
+          <label class="mini">종료 <input type="time" id="dndEnd" value="08:00"></label>
+        </div>
+        <label class="switch"><input type="checkbox" id="dndNoDust"><span>자동 먼지 비움 안함</span></label>
+        <label class="switch"><input type="checkbox" id="dndNoDry"><span>자동 건조 안함</span></label>
+        <button class="btn primary full" id="dndSave">시간 저장</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-title">음성</div>
+      <select id="langSel">
+        <option value="1">중국어</option><option value="2">영어</option>
+        <option value="3">러시아어</option><option value="4">독일어</option>
+        <option value="5">이탈리아어</option><option value="6">프랑스어</option>
+        <option value="7">폴란드어</option><option value="8">스페인어</option>
+        <option value="9">한국어</option><option value="10">중국어(번체)</option>
+        <option value="11">베트남어</option>
+      </select>
+      <label class="mini">음량 <span id="volVal">–</span>
+        <input type="range" id="volRange" min="0" max="100" step="1">
+      </label>
+    </div>
+  </section>
+
+  <!-- ===== 5. 스테이션 설정 ===== -->
+  <section class="win win-side hidden" id="winStation">
+    <div class="win-head"><h2>스테이션 설정</h2><button class="close" data-close="winStation">✕</button></div>
+
+    <div class="block">
+      <div class="block-title">물걸레 세척 간격</div>
+      <div class="seg" id="mopFreqSeg">
+        <button data-v="5">5분</button><button data-v="10">10분</button><button data-v="15">15분</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <label class="switch"><input type="checkbox" id="optDrying"><span>열풍 건조</span></label>
+      <div class="seg" id="dryTimeSeg">
+        <button data-v="120">2시간</button><button data-v="180">3시간</button><button data-v="240">4시간</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-title">자동 먼지 비움</div>
+      <div class="seg" id="dustSeg">
+        <button data-v="0">끄기</button><button data-v="3">5회마다</button><button data-v="1">1회마다</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 6. 소모품 ===== -->
+  <section class="win win-side hidden" id="winConsum">
+    <div class="win-head"><h2>소모품 및 유지보수</h2><button class="close" data-close="winConsum">✕</button></div>
+    <div id="consumList" class="list"></div>
+    <p class="hint">수명은 기기 보고값(사용률) 기준입니다. 초기화 버튼은 기기 카운터를 리셋합니다.</p>
+  </section>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<dialog id="helpDlg" class="help">
+  <h3 id="helpTitle">설명</h3>
+  <dl id="helpBody"></dl>
+  <div class="row"><button class="btn" onclick="document.getElementById('helpDlg').close()">닫기</button></div>
+</dialog>
+<script src="/static/tips.js?v=53"></script>
+<script src="/static/app.js?v=53"></script>
+<script src="/static/editor.js?v=53"></script>
+<script src="/static/panels.js?v=53"></script>
+<script>
+(async () => {
+  await loadCfg();
+  await refresh();
+  await loadMaps();
+  loadMap(true);
+  initPanels();
+  updateOrientation();
+})();
+</script>
+</body>
+</html>
