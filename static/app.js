@@ -253,9 +253,14 @@ async function loadMaps() {
       sel.innerHTML = "";
       (d.maps || []).forEach((m) => {
         const o = document.createElement("option");
+        const active = d.current != null && String(m.mapId) === String(d.current);
         o.value = m.mapId;
-        o.textContent = `${m.name || ("지도 " + m.mapId)}${m.status === 1 ? " (사용 중)" : ""}`;
-        if (m.status === 1) o.selected = true;
+        o.textContent = `${m.name || ("지도 " + m.mapId)}${active ? " (사용 중)" : ""}`;
+        if (active) o.selected = true;
+        if (m.temporary) {
+          o.disabled = true;
+          o.title = "매핑되지 않은 새로운 지도 — 저장된 지도 목록에는 없습니다";
+        }
         sel.appendChild(o);
       });
       return;

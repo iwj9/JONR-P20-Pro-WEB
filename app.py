@@ -635,7 +635,23 @@ def consumables_reset():
 @app.route("/api/maps/list")
 def maps_list():
     try:
-        return jsonify({"ok": True, "maps": _maps_infos()})
+        maps = _maps_infos()
+        with _LOCK:
+            current = _MAP_CACHE.get("meta", {}).get("map_id") if _MAP_CACHE.get("meta") else None
+        try:
+            current_id = int(current) if current is not None else None
+        except (TypeError, ValueError):
+            current_id = None
+        saved_ids = set()
+        for m in maps:
+            try: saved_ids.add(int(m.get("mapId")))
+            except (TypeError, ValueError): pass
+        # 저장되지 않은 임시 지도(전체 청소로 생성된 '새로운 지도')는
+        # 지도 목록 응답에 없지만 Map Viewer에는 표시된다. 목록에도 추가한다.
+        if current_id is not None and current_id not in saved_ids:
+            maps.append({"mapId": current_id, "name": "새로운 지도",
+                         "status": 1, "temporary": True})
+        return jsonify({"ok": True, "maps": maps, "current": current_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 

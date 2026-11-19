@@ -13,7 +13,7 @@ try {
   document.documentElement.dataset.theme = "system";
 }
 </script>
-<link rel="stylesheet" href="/static/styles.css?v=66">
+<link rel="stylesheet" href="/static/styles.css?v=67">
 </head>
 <body>
 <div class="rail" id="rail">
@@ -293,16 +293,16 @@ try {
   <dl id="helpBody"></dl>
   <div class="row"><button class="btn" onclick="document.getElementById('helpDlg').close()">닫기</button></div>
 </dialog>
-<script src="/static/tips.js?v=66"></script>
-<script src="/static/app.js?v=66"></script>
-<script src="/static/editor.js?v=66"></script>
-<script src="/static/panels.js?v=66"></script>
+<script src="/static/tips.js?v=67"></script>
+<script src="/static/app.js?v=67"></script>
+<script src="/static/editor.js?v=67"></script>
+<script src="/static/panels.js?v=67"></script>
 <script>
 (async () => {
   await loadCfg();
   await refresh();
+  await loadMap(true);
   await loadMaps();
-  loadMap(true);
   initPanels();
   updateOrientation();
 })();
