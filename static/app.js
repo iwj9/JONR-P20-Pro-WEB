@@ -39,6 +39,20 @@ const RSTATUS_KO = {
 const STATION_STATES = new Set(["WashMop", "HotDry", "WindDry", "ClctDust",
   "BackWashMop", "BackClctDust", "BPReturn", "BPPauseReturn", "BackWashPause", "BackClctPause"]);
 const CLEAN_STATES = [2, 4, 5, 7];
+/* 실제 청소 중뿐 아니라 세척 복귀·일시정지·스테이션 작업도 '진행 중인 작업'으로 본다 */
+const TASK_STATE_CODES = new Set([2, 4, 5, 6, 7, 10, 11, 12, 17, 18, 19, 20, 21, 23]);
+const TASK_CODE_RANGE = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+
+function hasActiveTask(s) {
+  if (TASK_STATE_CODES.has(s.status_code)) return true;
+  if (s.status_code === 18 && STATION_STATES.has(s.robot_status)) return true;
+  const targets = s.task_targets;
+  const hasTargets = Array.isArray(targets)
+    ? targets.length > 0
+    : !!targets && String(targets) !== "[]" && String(targets) !== "";
+  return hasTargets && TASK_CODE_RANGE.has(Number(s.task)) &&
+    ![1, 9, 13].includes(s.status_code);
+}
 
 function statusText(st, mode, rstat) {
   if (rstat && STATION_STATES.has(rstat)) return RSTATUS_KO[rstat] || "스테이션 동작";
@@ -77,7 +91,7 @@ async function refresh() {
   }
   window.__S = s;
   const st = s.status_code;
-  const cleaning = CLEAN_STATES.includes(st);
+  const cleaning = hasActiveTask(s);
   const docked = [9, 11, 13, 18].includes(st) || STATION_STATES.has(s.robot_status);
 
   $("statArea").textContent = s.clean_area_m2 ?? 0;
@@ -149,7 +163,7 @@ async function act(name, extra) {
 }
 $("startBtn").onclick = async () => {
   const s = window.__S || {};
-  const cleaning = CLEAN_STATES.includes(s.status_code);
+  const cleaning = hasActiveTask(s);
   if (cleaning) return act("pause");
   const t = (typeof TOOL !== "undefined") ? TOOL : "full";
   if (t === "walls") { toast("금지 구역 설정 중입니다 — 청소 탭에서 시작하세요"); return; }
