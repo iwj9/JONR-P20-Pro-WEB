@@ -4,6 +4,8 @@ let DOCK = null;              // 충전 스테이션 px 위치
 let SELECTED = [];            // 방 선택 순서
 let ZONES = [];               // {id, x0,y0,x1,y1}
 let ZONE_TASK = false;        // 구역 청소 시작됨(청소 중에는 편집 잠금)
+let CLEANING_LOCK = false;    // 로봇이 청소 중이면 방/구역 변경 잠금
+const TASK_KEY = "jonr.cleanTask";
 let ZONE_SAW_CLEAN = false;   // 실제 청소 상태를 한 번이라도 봤는지
 let ZONE_STARTED_AT = 0;
 let ELEMS = [];               // 요소 편집 대상
@@ -33,6 +35,30 @@ const KIND_ORDER = ["virtualWalls", "mopWalls", "carpet", "thres"];
 const KEY_TO_KIND = { virtualWalls: "virtual", mopWalls: "mop", carpet: "carpet", thres: "thres" };
 const CARPET_STRAT = ["적응", "회피", "통과", "무시"];
 const CARPET_EXPANDED = new Set();
+
+/* 청소 작업 대상 저장/복원 (앱 재시작 후에도 현재 대상 표시) */
+function saveCleanTask(active) {
+  try {
+    localStorage.setItem(TASK_KEY, JSON.stringify({
+      map_id: MAPMETA?.map_id, active,
+      selected: SELECTED.slice(),
+      zones: ZONES.map(z => ({ id: z.id, x0: z.x0, y0: z.y0, x1: z.x1, y1: z.y1 })),
+      savedAt: Date.now(),
+    }));
+  } catch (e) { /* 저장 실패는 무시 */ }
+}
+function loadCleanTask() {
+  try {
+    const raw = localStorage.getItem(TASK_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function clearCleanTask() {
+  try { localStorage.removeItem(TASK_KEY); } catch (e) { /* 무시 */ }
+}
+function cleaningNotice() {
+  toast("현재 청소 중입니다. 방·구역을 변경할 수 없습니다. 변경하려면 작업을 종료하세요.");
+}
 
 function currentType() {
   const m = KINDS[KIND];
@@ -607,6 +633,7 @@ mapCv.addEventListener("mousedown", (e) => {
   const p = evtPos(e);
 
   if (TOOL === "room") {
+    if (CLEANING_LOCK) { cleaningNotice(); return; }
     const rm = hitRoom(p[0], p[1]);
     if (rm?.room_id != null) {
       const i = SELECTED.indexOf(rm.room_id);
@@ -616,6 +643,7 @@ mapCv.addEventListener("mousedown", (e) => {
     return;
   }
   if (TOOL === "zone") {
+    if (CLEANING_LOCK) { cleaningNotice(); return; }
     if (ZONE_TASK) {
       toast("구역 청소 중 — 이동/수정/삭제할 수 없습니다");
       return;
@@ -707,6 +735,7 @@ function finalizeShape() {
   const a = DRAFT.a, b = DRAFT.b;
   if (dist(a, b) * sf() < 10) { toast("너무 작습니다"); DRAFT = null; drawAll(); return; }
   if (TOOL === "zone") {
+    if (CLEANING_LOCK) { DRAFT = null; cleaningNotice(); return; }
     if (ZONES.length >= 10) { toast("구역은 최대 10개"); DRAFT = null; drawAll(); return; }
     ZONES.push({ id: seq++, x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]),
                  x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]) });
@@ -736,9 +765,11 @@ function renderRooms() {
     if (rm.room_id == null) return;
     const order = SELECTED.indexOf(rm.room_id);
     const b = document.createElement("button");
-    b.className = "chip" + (order >= 0 ? " sel" : "");
+    b.className = "chip" + (order >= 0 ? " sel" : "") + (CLEANING_LOCK ? " disabled" : "");
+    b.disabled = CLEANING_LOCK;
     b.textContent = order >= 0 ? `${order + 1}. ${rm.name}` : rm.name;
     b.onclick = () => {
+      if (CLEANING_LOCK) { cleaningNotice(); return; }
       const i = SELECTED.indexOf(rm.room_id);
       if (i >= 0) SELECTED.splice(i, 1); else SELECTED.push(rm.room_id);
       renderRooms(); drawAll();
@@ -758,6 +789,16 @@ const ZONE_BUSY_RS = new Set([
   "BPReturn", "BPPauseReturn", "BackWashPause", "BackClctPause",
 ]);
 function syncZoneCleaning(cleaning, st, rstat) {
+  const wasLocked = CLEANING_LOCK;
+  CLEANING_LOCK = !!cleaning;
+  if (wasLocked !== CLEANING_LOCK) {
+    renderRooms(); drawAll();
+    if (!CLEANING_LOCK) {
+      clearCleanTask();
+      DRAFT = null; DRAG = null;
+      hint("청소 종료 — 방/구역 변경이 가능합니다");
+    }
+  }
   if (!ZONE_TASK) return;
   const paused = st === 6;
   const station = st === 18 || ZONE_BUSY_RS.has(rstat);
@@ -956,14 +997,18 @@ function renderElems() {
 
 /* ---------- 재생 버튼용 (탭 맥락) ---------- */
 async function startSelectedRooms() {
+  if (window.__CLEANING || CLEANING_LOCK) { cleaningNotice(); return; }
   if (!SELECTED.length) { toast("방을 먼저 선택하세요"); return; }
   try {
     await post("/api/clean/room", { room_ids: SELECTED });
+    CLEANING_LOCK = true;
+    saveCleanTask("room");
     toast(`${SELECTED.length}개 방 순서대로 청소 시작`);
     refresh();
   } catch (e) { toast("실패: " + e.message); }
 }
 async function startZones() {
+  if (window.__CLEANING || CLEANING_LOCK) { cleaningNotice(); return; }
   if (!ZONES.length) { toast("구역을 먼저 그리세요"); return; }
   try {
     const rects = ZONES.map((z) => {
@@ -973,10 +1018,12 @@ async function startZones() {
     await post("/api/clean/zone", { rects });
     // 청소가 끝날 때까지 구역을 지도에 유지하고 편집을 잠근다
     ZONE_TASK = true;
+    CLEANING_LOCK = true;
     ZONE_SAW_CLEAN = false;
     ZONE_STARTED_AT = Date.now();
+    saveCleanTask("zone");
     DRAFT = null; DRAG = null;
-    renderZoneInfo(); drawAll();
+    renderZoneInfo(); renderRooms(); drawAll();
     toast(`${rects.length}개 구역 청소 시작 — 청소 중에는 수정할 수 없습니다`);
     refresh();
   } catch (e) { toast("실패: " + e.message); }
@@ -1071,6 +1118,8 @@ $("wallsCancelBtn").onclick = () => {
 document.querySelectorAll("#toolTabs .tab").forEach((t) => {
   t.onclick = () => {
     TOOL = t.dataset.tool;
+    const locked = !!window.__CLEANING || CLEANING_LOCK;
+    if (locked && (TOOL === "room" || TOOL === "zone")) cleaningNotice();
     document.querySelectorAll("#toolTabs .tab").forEach((x) => x.classList.toggle("active", x === t));
     $("cleanPane").classList.toggle("hidden", TOOL === "walls");
     $("wallsPane").classList.toggle("hidden", TOOL !== "walls");
@@ -1078,10 +1127,14 @@ document.querySelectorAll("#toolTabs .tab").forEach((t) => {
     DRAFT = null; DRAG = null;
     mapCv.style.cursor = (TOOL === "full") ? "grab" : "crosshair";
     hint(TOOL === "full" ? "전체 청소 — ▶ 로 시작 · 좌드래그/우클릭으로 지도 이동"
-      : TOOL === "room" ? "방을 클릭해 선택 (클릭 순서 = 청소 순서) · ▶ = 선택 방 청소"
-      : TOOL === "zone" ? (ZONE_TASK
-          ? "구역 청소 중 — 구역은 이동/수정/삭제할 수 없습니다"
-          : "지도에 구역을 그리세요 · ▶ = 그린 구역 청소 (최대 10개)")
+      : TOOL === "room" ? (locked
+          ? "청소 중 — 방 선택이 잠겼습니다. 변경하려면 작업을 종료하세요"
+          : "방을 클릭해 선택 (클릭 순서 = 청소 순서) · ▶ = 선택 방 청소")
+      : TOOL === "zone" ? (locked
+          ? "청소 중 — 구역 생성·수정이 잠겼습니다. 변경하려면 작업을 종료하세요"
+          : (ZONE_TASK
+            ? "구역 청소 중 — 구역은 이동/수정/삭제할 수 없습니다"
+            : "지도에 구역을 그리세요 · ▶ = 그린 구역 청소 (최대 10개)"))
       : "요소를 골라 추가/이동/조절/삭제 후 저장하세요");
     drawAll();
     requestAnimationFrame(() => layoutMap && layoutMap());
@@ -1185,8 +1238,25 @@ async function loadMap(refresh) {
             DRAFT = null; DRAG = null;
       ELEMS = buildElems();
       ORIGINAL = clone(ELEMS);
-      ZONES = [];
-      ZONE_TASK = false; ZONE_SAW_CLEAN = false;
+      CLEANING_LOCK = !!window.__CLEANING;
+      const task = loadCleanTask();
+      if (task && CLEANING_LOCK && String(task.map_id) === String(MAPMETA.map_id)) {
+        SELECTED = (Array.isArray(task.selected) ? task.selected : [])
+          .filter(id => ROOMS.some(rm => rm.room_id === id));
+        ZONES = (Array.isArray(task.zones) ? task.zones : [])
+          .filter(z => [z.x0, z.y0, z.x1, z.y1].every(Number.isFinite))
+          .map(z => ({ id: +z.id || seq++, x0: +z.x0, y0: +z.y0, x1: +z.x1, y1: +z.y1 }));
+        ZONE_TASK = task.active === "zone";
+        ZONE_SAW_CLEAN = true;
+        ZONE_STARTED_AT = Date.now();
+        seq = Math.max(seq, ...ZONES.map(z => z.id + 1));
+      } else {
+        clearCleanTask();
+        SELECTED = [];
+        ZONES = [];
+        ZONE_TASK = false;
+        ZONE_SAW_CLEAN = false;
+      }
       renderRooms(); renderZoneInfo(); renderKindChips(); renderElems();
       applyZoom(ZOOM);
       refreshLive();

@@ -404,6 +404,7 @@ input[type=range]{inline-size:100%;margin-block-start:.5rem;accent-color:var(--a
   font-size:.75rem;
 }
 .chip.sel{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.chip.disabled{opacity:.55;cursor:not-allowed}
 
 .help-btn{
   flex:0 0 auto;
