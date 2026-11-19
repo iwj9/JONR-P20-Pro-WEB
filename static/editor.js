@@ -50,8 +50,11 @@ function parseCleanTargets(raw) {
   if (nums.length % 8 === 0 && maxAbs > 50) {
     const zones = [];
     for (let i = 0; i < nums.length; i += 8) {
+      // 기기 clean-values 는 scene 좌표다. 지도에 그리려면 캔버스 px 로 역변환한다.
       const p = nums.slice(i, i + 8);
-      const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
+      const pts = [];
+      for (let j = 0; j < 8; j += 2) pts.push(sceneToPx(p[j], p[j + 1]));
+      const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
       zones.push({ id: seq + i / 8,
                    x0: Math.min(...xs), y0: Math.min(...ys),
                    x1: Math.max(...xs), y1: Math.max(...ys) });
@@ -166,6 +169,12 @@ function pxToScene(px, py) {
   const col = (px - ox - k / 2) / k, row = (py - oy - k / 2) / k;
   return [Math.round(col + MAPMETA.y_max),
           Math.round(800 - MAPMETA.x_min - (MAPMETA.height - 1) + row)];
+}
+function sceneToPx(sx, sy) {
+  const k = MAPMETA.scale, ox = MAPMETA.ox || 0, oy = MAPMETA.oy || 0;
+  const col = sx - MAPMETA.y_max;
+  const row = (MAPMETA.height - 1) - ((800 - sy) - MAPMETA.x_min);
+  return [col * k + k / 2 + ox, row * k + k / 2 + oy];
 }
 function metersPerUnit() {
   return (MAPMETA?.resolution || 5) / 100;
