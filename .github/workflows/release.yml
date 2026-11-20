@@ -29,9 +29,7 @@ jobs:
         run: powershell -ExecutionPolicy Bypass -File .\build.ps1
 
       - name: Package portable zip
-        shell: powershell
-        run: |
-          Compress-Archive -Path dist\JONR-P20-Pro\* -DestinationPath JONR-P20-Pro-portable.zip
+        run: python package.py
 
       - name: Create GitHub Release
         env:

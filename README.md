@@ -181,7 +181,8 @@ dist\JONR-P20-Pro\JONR-P20-Pro-Web.exe
 dist\JONR-P20-Pro\_internal\
 ```
 
-`build.ps1`은 `static/`을 번들에 포함하고, **두 exe와 하나의 `_internal` 폴더를 같은 폴더에 모읍니다.**
+`build.ps1`은 `static/`을 번들에 포함하고, **두 exe와 하나의 `_internal` 폴더를 같은 폴더에 모읍니다.**  
+ZIP이 필요하면 `python package.py`를 실행합니다. (Actions도 같은 스크립트를 사용합니다.)
 빌드 산출물(`dist/`, `build/`, `*.spec`)은 저장소에 커밋하지 않습니다.
 
 태그(`v*`)를 푸시하면 GitHub Actions가 같은 방식으로 빌드한 뒤 `JONR-P20-Pro-portable.zip`을 Release에 업로드합니다.
