@@ -26,7 +26,9 @@ Mi Home 앱 대신 같은 네트워크에서 로봇을 제어하고, 지도·청
 
 Python이나 패키지를 설치할 필요가 없습니다.
 
-1. GitHub **Releases**에서 `JONR-P20-Pro-portable.zip`을 다운로드합니다.
+배포 파일: [GitHub Releases](https://github.com/iwj9/JONR-P20-Pro-WEB/releases)
+
+1. 위 Releases 페이지에서 `JONR-P20-Pro-portable.zip`을 다운로드합니다.
 2. 원하는 폴더에 압축을 풉니다. (바탕화면·다운로드·사용자 폴더 권장)
 3. `JONR-P20-Pro-Configure.exe`로 최초 설정을 합니다. (설치 프로그램이 아님)
 4. `JONR-P20-Pro-Web.exe`를 실행합니다. 브라우저가 자동으로 열립니다.
