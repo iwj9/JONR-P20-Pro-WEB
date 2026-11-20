@@ -31,6 +31,9 @@ Python이나 패키지를 설치할 필요가 없습니다.
 3. `JONR-P20-Pro-Configure.exe`로 최초 설정을 합니다. (설치 프로그램이 아님)
 4. `JONR-P20-Pro-Web.exe`를 실행합니다. 브라우저가 자동으로 열립니다.
 
+Configure로 설정/세션을 저장하지 않고 Web.exe를 실행하면, 서버가 뜨기 전에 안내 창이 표시됩니다.
+“토큰과 세션이 필요하다. Configure를 실행할까요?”라고 묻고, **Y**를 누르면 Configure를 대신 실행합니다. 완료되면 Web.exe가 이어서 서버를 시작하고, **N**이면 그대로 종료됩니다.
+
 두 exe는 **같은 폴더**에 있고, 설정(`config.json`)과 세션(`.xc_session.json`)도 그 폴더에 저장됩니다.
 
 > 서명되지 않은 exe라 첫 실행 시 Windows SmartScreen 경고가 뜰 수 있습니다.

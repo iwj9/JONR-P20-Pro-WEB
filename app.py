@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -43,6 +44,47 @@ def fail_port_busy():
         except (EOFError, KeyboardInterrupt):
             pass
     raise SystemExit(1)
+
+
+def _configure_command(relogin=False):
+    args = ["--relogin"] if relogin else []
+    if getattr(sys, "frozen", False):
+        return [os.path.join(USER_DIR, "JONR-P20-Pro-Configure.exe")] + args
+    setup_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup_tool.py")
+    return [sys.executable, setup_py] + args
+
+
+def prompt_setup(message, relogin=False):
+    """설정이 필요함을 알리고, Y 선택 시 Configure를 대신 실행한다."""
+    question = (message + "\n\nJONR P20 Pro를 조작하려면 토큰과 클라우드 세션이 필요합니다.\n"
+                "지금 Configure를 실행할까요?\n\nY = 실행 / N = 종료")
+    answer = None
+    try:
+        import ctypes
+        answer = ctypes.windll.user32.MessageBoxW(0, question, "JONR P20 Pro", 0x24) == 6
+    except Exception:
+        pass
+    if answer is None:
+        print("\n[설정 필요] " + message)
+        while True:
+            try:
+                raw = input("Configure를 실행할까요? [Y/n] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                raw = "n"
+            if raw in ("", "y", "yes"):
+                answer = True
+                break
+            if raw in ("n", "no"):
+                answer = False
+                break
+    if not answer:
+        raise SystemExit(1)
+    try:
+        subprocess.Popen(_configure_command(relogin)).wait()
+    except Exception as exc:
+        print(f"[오류] Configure 실행 실패: {exc}")
+        raise SystemExit(1)
+    return True
 
 
 def open_browser_later():
@@ -1098,12 +1140,28 @@ def threshold_format():
 
 
 if __name__ == "__main__":
+    cfg = load_config()
+    missing = [k for k in ("ip", "token", "did") if not str(cfg.get(k) or "").strip()]
+    if missing:
+        prompt_setup(
+            "최초 설정이 아직 완료되지 않았습니다.\n"
+            "로봇을 조작하려면 토큰·IP·DID를 기기에서 가져와 저장해야 합니다."
+        )
+        cfg = load_config()
+        missing = [k for k in ("ip", "token", "did") if not str(cfg.get(k) or "").strip()]
+        if missing:
+            raise SystemExit(1)
+    if not cloud_session.validate_session(preferred=_preferred_server()):
+        prompt_setup(
+            "저장된 클라우드 세션이 없거나 만료되었습니다.\n"
+            "지도와 로봇 조회를 계속하려면 Mi 계정으로 세션을 갱신해야 합니다.",
+            relogin=True,
+        )
+        if not cloud_session.validate_session(preferred=_preferred_server()):
+            raise SystemExit(1)
     if port_in_use():
         fail_port_busy()
     os.makedirs(STATIC_DIR, exist_ok=True)
-    if not cloud_session.session_exists():
-        print("[안내] Mi 클라우드 세션이 없습니다. "
-              "JONR-P20-Pro-Configure.exe를 먼저 실행하세요. (로컬 제어는 가능)")
     open_browser_later()
     print(f"JONR P20 Pro dashboard → {URL}")
     app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False, threaded=True)
