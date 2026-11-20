@@ -727,9 +727,21 @@ mapCv.addEventListener("mousemove", (e) => {
       }
     } else if (DRAG.hit.kind === "pt-a") {
       if (TOOL === "zone") { el.x0 = Math.min(p[0], el.x1 - 12); el.y0 = Math.min(p[1], el.y1 - 12); }
+      else if (el.shape === "rect") {
+        // 핸들은 min/max 위치에 표시되지만 저장된 a/b 순서는 뒤집힐 수 있다.
+        // 좌상단 핸들을 끌 때는 우하단을 고정해야 사각형이 접히지 않는다.
+        const ox = Math.max(o.a[0], o.b[0]), oy = Math.max(o.a[1], o.b[1]);
+        el.a = p; el.b = [ox, oy];
+        if (!el.isNew) el.dirty = true;
+      }
       else { el.a = p; if (!el.isNew) el.dirty = true; }
     } else if (DRAG.hit.kind === "pt-b") {
       if (TOOL === "zone") { el.x1 = Math.max(p[0], el.x0 + 12); el.y1 = Math.max(p[1], el.y0 + 12); }
+      else if (el.shape === "rect") {
+        const ox = Math.min(o.a[0], o.b[0]), oy = Math.min(o.a[1], o.b[1]);
+        el.a = [ox, oy]; el.b = p;
+        if (!el.isNew) el.dirty = true;
+      }
       else { el.b = p; if (!el.isNew) el.dirty = true; }
     }
     drawAll();

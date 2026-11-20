@@ -764,10 +764,27 @@ WALL_KINDS = {
 
 
 def _shape_points(kind, pts, wtype=2):
-    """pts: [x1,y1,x2,y2]. 선형(가상벽·문턱)은 2점, 구역형은 4점 링."""
+    """pts: [x1,y1,x2,y2]. 선형은 2점, 구역형은 4점 링으로 변환한다.
+
+    가상벽(kind=virtual)은 type으로 구분한다: type 1=가상벽(선), type 2=진입금지(사각형).
+    이전에는 kind만 보고 항상 선으로 보내서 진입금지가 비정상적으로 저장됐다.
+    """
     x1, y1, x2, y2 = [int(v) for v in pts]
-    shape = WALL_KINDS[kind][2]
-    if shape == "line":
+    try:
+        t = int(wtype)
+    except (TypeError, ValueError):
+        t = 2
+    if kind == "thres":
+        is_line = True
+    elif kind == "carpet":
+        is_line = False
+    elif kind == "mop":
+        is_line = False
+    elif kind == "virtual":
+        is_line = (t != 2)
+    else:
+        is_line = WALL_KINDS[kind][2] == "line"
+    if is_line:
         return f"{x1},{y1},{x2},{y2}"
     xa, xb = sorted((x1, x2))
     ya, yb = sorted((y1, y2))
@@ -905,12 +922,10 @@ def walls_save():
             tid = int(d if not isinstance(d, dict) else d["id"])
             ref = cur.get(tid, {})
             pts_src = ref.get("points") or [[0, 0], [0, 0]]
-            x1, y1 = pts_src[0]
-            x2, y2 = pts_src[-1]
+            flat = ",".join(str(int(v)) for p in pts_src for v in p)
             items.append({"id": tid, "type": ref.get("type", 1), "mapId": mid,
                           "mode": mode, "action": "del", "isActive": True,
-                          "point": _shape_points(kind, [x1, y1, x2, y2],
-                                                 ref.get("type", 2))})
+                          "point": flat})
         # 청크(5개) 전송
         if not items:
             return jsonify({"ok": True, "kind": kind, "noop": True,
