@@ -13,4 +13,4 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
     for path in root.rglob("*"):
         if path.is_file():
             zf.write(path, path.relative_to(root))
-print(f"[패키징] {out} ({out.stat().st_size} bytes)")
+print(f"[package] {out} ({out.stat().st_size} bytes)")
