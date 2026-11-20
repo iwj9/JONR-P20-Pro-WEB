@@ -17,6 +17,11 @@ from paths import USER_DIR
 
 
 def main():
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("JONR P20 Pro 설정 도구")
+        print("  JONR-P20-Pro-Configure.exe            최초 설정")
+        print("  JONR-P20-Pro-Configure.exe --relogin  세션 갱신")
+        return 0
     if "--relogin" in sys.argv:
         print("[설정] Mi 클라우드 세션을 갱신합니다.")
         ok = cloud_session.login_interactive(force=True)

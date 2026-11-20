@@ -28,11 +28,10 @@ Python이나 패키지를 설치할 필요가 없습니다.
 
 1. GitHub **Releases**에서 `JONR-P20-Pro-portable.zip`을 다운로드합니다.
 2. 원하는 폴더에 압축을 풉니다. (바탕화면·다운로드·사용자 폴더 권장)
-3. `Configure\JONR-P20-Pro-Configure.exe`로 최초 설정을 합니다. (설치 프로그램이 아님)
-4. `Web\JONR-P20-Pro-Web.exe`를 실행합니다. 브라우저가 자동으로 열립니다.
+3. `JONR-P20-Pro-Configure.exe`로 최초 설정을 합니다. (설치 프로그램이 아님)
+4. `JONR-P20-Pro-Web.exe`를 실행합니다. 브라우저가 자동으로 열립니다.
 
-설정(`config.json`)과 세션(`.xc_session.json`)은 **exe를 실행한 폴더가 아니라 각 exe가 들어 있는 폴더**에 저장됩니다.
-예를 들어 `Web\JONR-P20-Pro-Web.exe`를 실행하면 `Web\` 폴더에 설정 파일이 생깁니다.
+두 exe는 **같은 폴더**에 있고, 설정(`config.json`)과 세션(`.xc_session.json`)도 그 폴더에 저장됩니다.
 
 > 서명되지 않은 exe라 첫 실행 시 Windows SmartScreen 경고가 뜰 수 있습니다.
 > “추가 정보 → 실행”을 눌러 주세요.
@@ -65,7 +64,7 @@ pip install -r requirements.txt
 
 로봇 제어에는 IP, 32자리 토큰, DID와 지도 표시용 클라우드 세션이 필요합니다.
 
-- portable: `Configure\JONR-P20-Pro-Configure.exe` 실행
+- portable: `JONR-P20-Pro-Configure.exe` 실행
 - 소스: `python setup_tool.py` 실행
 
 진행 순서:
@@ -84,7 +83,7 @@ pip install -r requirements.txt
 
 ## 4. 실행
 
-- portable: `Web\JONR-P20-Pro-Web.exe` 실행
+- portable: `JONR-P20-Pro-Web.exe` 실행
 - 소스: `python app.py` 실행
 
 브라우저가 자동으로 `http://127.0.0.1:5000`을 엽니다.
@@ -92,7 +91,7 @@ pip install -r requirements.txt
 
 세션이 만료되면 재로그인이 필요합니다.
 
-- portable: `Configure\JONR-P20-Pro-Configure.exe --relogin`
+- portable: `JONR-P20-Pro-Configure.exe --relogin`
 - 소스: `python setup_tool.py --relogin`
 
 로그인을 건너뛰어도 로컬 제어는 가능하지만, 지도·청소 경로 등 클라우드 지도 기능은 동작하지 않을 수 있습니다.
@@ -174,11 +173,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 결과물:
 
 ```text
-dist\JONR-P20-Pro-Configure\JONR-P20-Pro-Configure.exe
-dist\JONR-P20-Pro-Web\JONR-P20-Pro-Web.exe
+dist\JONR-P20-Pro\JONR-P20-Pro-Configure.exe
+dist\JONR-P20-Pro\JONR-P20-Pro-Web.exe
+dist\JONR-P20-Pro\_internal\
 ```
 
-`build.ps1`은 `static/`을 번들에 포함하고, 두 실행 파일을 각각 별도 폴더(onedir)로 만듭니다.
+`build.ps1`은 `static/`을 번들에 포함하고, **두 exe와 하나의 `_internal` 폴더를 같은 폴더에 모읍니다.**
 빌드 산출물(`dist/`, `build/`, `*.spec`)은 저장소에 커밋하지 않습니다.
 
 태그(`v*`)를 푸시하면 GitHub Actions가 같은 방식으로 빌드한 뒤 `JONR-P20-Pro-portable.zip`을 Release에 업로드합니다.

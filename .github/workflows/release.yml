@@ -31,11 +31,7 @@ jobs:
       - name: Package portable zip
         shell: powershell
         run: |
-          Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path release\Configure, release\Web | Out-Null
-          Copy-Item -Recurse -Force dist\JONR-P20-Pro-Configure\* release\Configure\
-          Copy-Item -Recurse -Force dist\JONR-P20-Pro-Web\* release\Web\
-          Compress-Archive -Path release\* -DestinationPath JONR-P20-Pro-portable.zip
+          Compress-Archive -Path dist\JONR-P20-Pro\* -DestinationPath JONR-P20-Pro-portable.zip
 
       - name: Create GitHub Release
         env:

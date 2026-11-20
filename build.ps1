@@ -10,9 +10,8 @@ $common = @(
     "--clean",
     "--onedir",
     "--console",
-    "--distpath", "dist",
-    "--workpath", "build",
-    "--specpath", "build",
+    "--workpath", "$root\build\_work",
+    "--specpath", "$root\build\_spec",
     "--add-data", "$root\static;static",
     "--hidden-import", "flask",
     "--hidden-import", "miio",
@@ -25,10 +24,22 @@ $common = @(
     "--collect-all", "miio"
 )
 
-Write-Host "[빌드] JONR-P20-Pro-Web.exe ..."
-pyinstaller @common --name "JONR-P20-Pro-Web" app.py
+$tmp = "$root\build\_tmp"
+$out = "$root\dist\JONR-P20-Pro"
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp, $out
+New-Item -ItemType Directory -Path $out | Out-Null
 
-Write-Host "[빌드] JONR-P20-Pro-Configure.exe ..."
-pyinstaller @common --name "JONR-P20-Pro-Configure" setup_tool.py
+Write-Host "[빌드] Web.exe ..."
+pyinstaller @common --distpath "$tmp\web" --name "JONR-P20-Pro-Web" app.py
 
-Write-Host "[완료] 결과물: $root\dist"
+Write-Host "[빌드] Configure.exe ..."
+pyinstaller @common --distpath "$tmp\configure" --name "JONR-P20-Pro-Configure" setup_tool.py
+
+Write-Host "[패키징] 한 폴더로 합치기 ..."
+Copy-Item -Force "$tmp\web\JONR-P20-Pro-Web\JONR-P20-Pro-Web.exe" "$out\JONR-P20-Pro-Web.exe"
+Copy-Item -Force "$tmp\configure\JONR-P20-Pro-Configure\JONR-P20-Pro-Configure.exe" "$out\JONR-P20-Pro-Configure.exe"
+Copy-Item -Recurse -Force "$tmp\web\JONR-P20-Pro-Web\_internal" "$out\_internal"
+
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
+
+Write-Host "[완료] 결과물: $out"
