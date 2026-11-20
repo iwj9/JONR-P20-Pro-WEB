@@ -19,7 +19,32 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from miio import Device
-from miio.exceptions import DeviceException
+from miio.exceptions import DeviceException, PayloadDecodeException
+
+import logging as _logging
+import threading as _threading
+
+
+class _TransientDecodeFilter(_logging.Filter):
+    """기기가 간헐적으로 보내는 깨진 패킷 로그는 터미널에서 제외한다.
+
+    python-miio가 복호화는 됐지만 JSON이 깨진 패킷을 받으면 ERROR를 찍는데,
+    실측상 드물게 발생하고 읽기(get_properties)는 아래에서 1회 재시도하므로
+    터미널을 지저분하게 만들지 않도록 이 메시지만 걸러낸다.
+    지속 실패는 get_properties 실패(RuntimeError)로 별도 보고된다.
+    """
+
+    def filter(self, record):
+        try:
+            if record.levelno >= _logging.ERROR and \
+                    "Unable to parse json" in record.getMessage():
+                return False
+        except Exception:
+            pass
+        return True
+
+
+_logging.getLogger("miio.protocol").addFilter(_TransientDecodeFilter())
 
 MODEL = "xtl.vacuum.xm2216"
 
@@ -54,6 +79,8 @@ class JonrDevice:
             raise ValueError("token은 32자리 hex여야 합니다")
         self.ip = ip
         self.did = did or "jonr-web"
+        # Flask threaded + 폴링 타이머가 같은 Device를 공유하므로 직렬화한다
+        self._lock = _threading.RLock()
         # 이 기기는 로컬 액션 일부가 응답하지 않아(-9999) 타임아웃을 짧게 잡는다
         self._dev = Device(ip, token, model=MODEL, timeout=4)
 
@@ -63,7 +90,17 @@ class JonrDevice:
         last = None
         for i in range(retries):
             try:
-                return self._dev.send(method, payload)
+                with self._lock:
+                    return self._dev.send(method, payload)
+            except PayloadDecodeException as e:
+                # 기기가 간헐적으로 깨진 패킷을 보냄(checksum은 통과).
+                # 읽기는 멱등하므로 1회 재시도하고, 쓰기(action/set)는
+                # 중복 실행 위험이 있어 즉시 실패로 올린다.
+                last = e
+                if method == "get_properties" and i + 1 < retries:
+                    time.sleep(0.4)
+                    continue
+                raise
             except DeviceException as e:
                 last = e
                 msg = str(e)
