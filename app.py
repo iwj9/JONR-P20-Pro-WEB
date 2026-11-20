@@ -11,14 +11,11 @@ import webbrowser
 from flask import Flask, jsonify, request, send_from_directory, Response, abort
 
 from jonr import JonrDevice
+from paths import CHANNEL_PATH, CONFIG_PATH, STATIC_DIR, USER_DIR
 import cloud_session
 import map_codec as codec
 import map_render
 import xc_cloud
-
-BASE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE, "config.json")
-STATIC_DIR = os.path.join(BASE, "static")
 
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -287,8 +284,6 @@ def action():
                 return jsonify({"ok": False, "error": f"{e} / 클라우드: {e2}"}), 502
         return jsonify({"ok": False, "error": str(e)}), 502
 
-
-CHANNEL_PATH = os.path.join(BASE, ".channel_map.json")
 
 
 def _chan_load():
@@ -1103,24 +1098,12 @@ def threshold_format():
 
 
 if __name__ == "__main__":
-    if "--setup" in sys.argv:
-        setup = cloud_session.setup_interactive()
-        if not setup:
-            raise SystemExit(1)
-        cfg = load_config()
-        cfg.update(setup)
-        save_config(cfg)
-        print("[설정] config.json에 IP/토큰/DID/서버를 저장했습니다. 이제 `python app.py`만 실행하면 됩니다.")
-        raise SystemExit(0)
-    if "--login" in sys.argv:
-        ok = cloud_session.login_interactive(force=True)
-        if ok:
-            xc_cloud.invalidate()
-        raise SystemExit(0 if ok else 1)
     if port_in_use():
         fail_port_busy()
     os.makedirs(STATIC_DIR, exist_ok=True)
-    cloud_session.ensure_session(preferred=_preferred_server())
+    if not cloud_session.session_exists():
+        print("[안내] Mi 클라우드 세션이 없습니다. "
+              "JONR-P20-Pro-Configure.exe를 먼저 실행하세요. (로컬 제어는 가능)")
     open_browser_later()
     print(f"JONR P20 Pro dashboard → {URL}")
     app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False, threaded=True)

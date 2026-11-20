@@ -17,9 +17,12 @@ import tempfile
 
 import requests
 
+from paths import OLD_SESSION_PATH as _OLD_SESSION_PATH
+from paths import SESSION_PATH
+
 BASE = os.path.dirname(os.path.abspath(__file__))
-SESS_PATH = os.path.join(BASE, ".xc_session.json")
-OLD_SESS_PATH = os.path.join(BASE, ".xc_session.pkl")
+SESS_PATH = SESSION_PATH
+OLD_SESS_PATH = _OLD_SESSION_PATH
 SERVERS = ["cn", "de", "us", "ru", "tw", "sg", "in", "i2"]
 
 TOKEN_EXTRACTOR_COMMIT = "d8bb6a9e6aeff2d38ecc9e4caefcc58f8551e672"

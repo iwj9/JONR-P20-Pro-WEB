@@ -12,8 +12,7 @@ Mi Home 앱 대신 같은 네트워크에서 로봇을 제어하고, 지도·청
 
 - **로봇**: JONR P20 Pro (`xtl.vacuum.xm2216`)
   - 개발·확인 펌웨어: `4.5.6_0805`
-- **PC**: Windows / macOS / Linux
-- **Python**: 3.10 이상 (3.13에서 확인)
+- **PC**: Windows 11이면 설치 없이 실행 가능한 portable 제공
 - **네트워크**: 로봇과 PC가 같은 공유기(LAN/Wi-Fi)에 연결
 - **Mi Home 계정**: 토큰 추출 및 지도 클라우드 세션에 필요
 
@@ -21,28 +20,30 @@ Mi Home 앱 대신 같은 네트워크에서 로봇을 제어하고, 지도·청
 
 ---
 
-## 2. 설치
+## 2. 설치 / 배포 파일 받기
 
-### 2-1. Python 설치
+### 2-1. Windows 11 portable (권장)
 
-Python 3.10 이상을 설치하고 `python` 명령이 동작하는지 확인합니다.
+Python이나 패키지를 설치할 필요가 없습니다.
 
-```powershell
-python --version
-```
+1. GitHub **Releases**에서 `JONR-P20-Pro-portable.zip`을 다운로드합니다.
+2. 원하는 폴더에 압축을 풉니다. (바탕화면·다운로드·사용자 폴더 권장)
+3. `Configure\JONR-P20-Pro-Configure.exe`로 최초 설정을 합니다. (설치 프로그램이 아님)
+4. `Web\JONR-P20-Pro-Web.exe`를 실행합니다. 브라우저가 자동으로 열립니다.
 
-### 2-2. 프로젝트 받기
+설정(`config.json`)과 세션(`.xc_session.json`)은 **exe를 실행한 폴더가 아니라 각 exe가 들어 있는 폴더**에 저장됩니다.
+예를 들어 `Web\JONR-P20-Pro-Web.exe`를 실행하면 `Web\` 폴더에 설정 파일이 생깁니다.
+
+> 서명되지 않은 exe라 첫 실행 시 Windows SmartScreen 경고가 뜰 수 있습니다.
+> “추가 정보 → 실행”을 눌러 주세요.
+
+### 2-2. 소스에서 실행 (개발자용)
+
+Python 3.10 이상이 필요합니다. (3.13에서 확인)
 
 ```powershell
 git clone https://github.com/iwj9/JONR-P20-Pro-WEB.git
 cd JONR-P20-Pro-WEB
-```
-
-ZIP으로 받았다면 압축을 풀고 해당 폴더로 이동합니다.
-
-### 2-3. 가상환경과 의존성 설치
-
-```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -62,17 +63,18 @@ pip install -r requirements.txt
 
 ## 3. 최초 설정 (한 번만)
 
-로봇 제어에는 **IP**, **32자리 토큰**, **DID**와 지도 표시용 **클라우드 세션**이 필요합니다. 아래 명령 하나로 모두 받아옵니다.
+로봇 제어에는 IP, 32자리 토큰, DID와 지도 표시용 클라우드 세션이 필요합니다.
 
-```powershell
-python app.py --setup
-```
+- portable: `Configure\JONR-P20-Pro-Configure.exe` 실행
+- 소스: `python setup_tool.py` 실행
+
+진행 순서:
 
 - Mi 계정 ID와 비밀번호를 입력합니다.
 - 캡챠나 2FA 코드가 요청되면 안내에 따라 입력합니다.
 - `xtl.vacuum.xm2216` 기기를 찾은 서버 목록이 표시됩니다.
 - 적용할 서버를 입력합니다. **대소문자를 구분하지 않으며**, 서버가 하나뿐이면 Enter로 기본값을 선택할 수 있습니다.
-- IP / 토큰 / DID / 서버는 `config.json`에, 클라우드 세션은 `.xc_session.json`에 자동 저장됩니다.
+- IP / 토큰 / DID / 서버는 `config.json`에, 클라우드 세션은 `.xc_session.json`에 저장됩니다.
 
 별도로 `token_extractor.py`를 내려받거나 직접 실행할 필요는 없습니다. 앱이 고정된 커밋과 SHA256으로 검증한 뒤 사용합니다.
 
@@ -82,26 +84,24 @@ python app.py --setup
 
 ## 4. 실행
 
-```powershell
-python app.py
-```
+- portable: `Web\JONR-P20-Pro-Web.exe` 실행
+- 소스: `python app.py` 실행
 
-`--setup`으로 세션과 설정을 저장했다면 추가 로그인 없이 바로 시작됩니다. 실행할 때 저장된 세션이 만료된 것으로 감지되면, 터미널에서 바로 재로그인을 요청합니다. 백그라운드 실행처럼 입력을 할 수 없는 상황에서는 `python app.py --login` 안내만 출력하고 서버를 시작합니다. 세션을 갱신하거나 서버를 다시 지정하려면:
+브라우저가 자동으로 `http://127.0.0.1:5000`을 엽니다.
+이미 5000번 포트가 사용 중이면 서버를 띄우지 않고 오류를 출력한 뒤 종료합니다.
 
-```powershell
-python app.py --login
-```
+세션이 만료되면 재로그인이 필요합니다.
+
+- portable: `Configure\JONR-P20-Pro-Configure.exe --relogin`
+- 소스: `python setup_tool.py --relogin`
 
 로그인을 건너뛰어도 로컬 제어는 가능하지만, 지도·청소 경로 등 클라우드 지도 기능은 동작하지 않을 수 있습니다.
-
-서버가 시작되면 브라우저에서 `http://127.0.0.1:5000`을 **자동으로 엽니다.**  
-이미 5000번 포트가 사용 중이면 Flask를 띄우지 않고 오류를 출력한 뒤 종료합니다. 터미널에서 실행 중이라면용자가 확인하고 Enter를 누를 때까지 대기합니다.
 
 ---
 
 ## 5. 연결 설정
 
-`--setup`에서 IP / 토큰 / DID / 서버가 이미 저장되므로, 설정 창은 값을 **변경할 때만** 사용하면 됩니다. 우측 상단 **⚙ 설정** → **연결 설정**에서 원하는 값을 수정하고 **저장**을 누르세요.
+`Configure`에서 IP / 토큰 / DID / 서버가 이미 저장되므로, 설정 창은 값을 **변경할 때만** 사용하면 됩니다. 우측 상단 **⚙ 설정** → **연결 설정**에서 원하는 값을 수정하고 **저장**을 누르세요.
 
 저장 후 상태가 자동으로 갱신됩니다. 저장된 토큰은 보안상 화면으로 다시 내려보내지 않습니다. 토큰 입력란은 비어 있으며, **변경하지 않고 저장하면 기존 토큰이 유지**됩니다. 새 토큰을 사용할 때만 32자리 값을 입력하세요.
 
@@ -162,19 +162,42 @@ python app.py --login
 
 ---
 
-## 9. 경고
+## 9. 빌드 방법 (개발자용)
+
+Windows 11에서 portable(onedir) 실행 파일을 만듭니다.
+
+```powershell
+pip install pyinstaller
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+결과물:
+
+```text
+dist\JONR-P20-Pro-Configure\JONR-P20-Pro-Configure.exe
+dist\JONR-P20-Pro-Web\JONR-P20-Pro-Web.exe
+```
+
+`build.ps1`은 `static/`을 번들에 포함하고, 두 실행 파일을 각각 별도 폴더(onedir)로 만듭니다.
+빌드 산출물(`dist/`, `build/`, `*.spec`)은 저장소에 커밋하지 않습니다.
+
+태그(`v*`)를 푸시하면 GitHub Actions가 같은 방식으로 빌드한 뒤 `JONR-P20-Pro-portable.zip`을 Release에 업로드합니다.
+
+---
+
+## 10. 경고
 
 - **비공식 프로젝트입니다.** JONR, Xiaomi, Mi Home과 제휴하거나 보증받은 프로젝트가 아닙니다.
 - **토큰은 로봇을 완전히 제어할 수 있는 자격 증명입니다.** `config.json`, `.xc_session.json`, 화면 캡처, 터미널 로그를 공유하지 마세요.
 - 서버는 `127.0.0.1`에만 바인딩되며, Host·Origin·요청 헤더를 검사해 다른 사이트에서의 호출을 차단합니다. 포트를 외부에 노출하거나 리버스 프록시 뒤에 두지 마세요.
 - 지도·청소 경로·카펫·문턱 저장은 **실제 기기 설정을 변경**합니다.
-- 클라우드 지도 기능은 Mi 클라우드 정책, 네트워크 상태, 계정 세션에 의존합니다. 세션이 만료되면 `python app.py --login`을 다시 실행해야 합니다.
+- 클라우드 지도 기능은 Mi 클라우드 정책, 네트워크 상태, 계정 세션에 의존합니다. 세션이 만료되면 `Configure.exe --relogin` (소스 실행 시 `python setup_tool.py --relogin`)으로 갱신해야 합니다.
 - 로봇 모델과 펌웨어 버전에 따라 일부 기능이 동작하지 않거나 다르게 표시될 수 있습니다.
 - **이 프로젝트의 코드는 100% AI에 의해 작성되었습니다.** 실제 기기에서 사용하기 전에 코드와 동작을 충분히 검토하세요.
 - 소프트웨어는 **있는 그대로(AS IS)** 제공되며, 사용으로 인한 기기 오작동·설정 손실·데이터 손실에 대해 보증하지 않습니다.
 
 ---
 
-## 10. 라이선스
+## 11. 라이선스
 
 MIT License. 자세한 내용은 [LICENSE](LICENSE)를 참고하세요.

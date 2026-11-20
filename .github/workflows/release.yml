@@ -1,0 +1,48 @@
+name: Build portable release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build onedir executables
+        run: powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+      - name: Package portable zip
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path release\Configure, release\Web | Out-Null
+          Copy-Item -Recurse -Force dist\JONR-P20-Pro-Configure\* release\Configure\
+          Copy-Item -Recurse -Force dist\JONR-P20-Pro-Web\* release\Web\
+          Compress-Archive -Path release\* -DestinationPath JONR-P20-Pro-portable.zip
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            JONR-P20-Pro-portable.zip `
+            --title "${{ github.ref_name }}" `
+            --generate-notes

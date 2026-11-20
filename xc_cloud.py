@@ -7,9 +7,10 @@ import json
 import os
 import sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE)
-import cloud_session as cs  # noqa: E402
+import cloud_session as cs
+from paths import RESOURCE_DIR
+
+sys.path.insert(0, RESOURCE_DIR)
 
 _CONN = None
 _SRV = None
